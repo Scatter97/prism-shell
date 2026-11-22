@@ -27,5 +27,9 @@ path = "src/bin/prism-preview.rs"
 name = "prism-shell"
 path = "src/bin/prism-shell.rs"
 
+[[bin]]
+name = "prism-recovery"
+path = "src/bin/prism-recovery.rs"
+
 [target.'cfg(windows)'.dependencies]
 prism-windows.workspace = true

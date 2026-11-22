@@ -14,6 +14,25 @@ pub const PANEL_GAP: f32 = 10.0;
 pub const PANEL_SCREEN_MARGIN: f32 = 8.0;
 pub const LAUNCHER_GAP: f32 = 12.0;
 
+/// Window-preview geometry, all in logical pixels. The preview surface is
+/// `PREVIEW_PANEL_HEIGHT` tall and its width grows with the number of windows.
+pub const PREVIEW_PANEL_HEIGHT: f32 = 214.0;
+pub const PREVIEW_PANEL_MIN_WIDTH: f32 = PREVIEW_PANEL_BASE_WIDTH + PREVIEW_CARD_PITCH;
+pub const PREVIEW_CARD_PITCH: f32 = 232.0;
+pub const PREVIEW_PANEL_BASE_WIDTH: f32 = 24.0;
+pub const PREVIEW_GAP: f32 = 16.0;
+/// Thumbnail rectangle relative to the preview window origin. These mirror
+/// `window-preview.slint`: 24 px shadow margin + 12 px card inset + 10 px
+/// thumbnail inset.
+pub const PREVIEW_THUMB_X: f32 = 46.0;
+pub const PREVIEW_THUMB_Y: f32 = 70.0;
+pub const PREVIEW_THUMB_WIDTH: f32 = 204.0;
+pub const PREVIEW_THUMB_HEIGHT: f32 = 92.0;
+/// Dock app-slot geometry used to anchor the preview above one icon.
+pub const DOCK_APPS_START: f32 = 71.0;
+pub const DOCK_APP_PITCH: f32 = 50.0;
+pub const DOCK_APP_HALF_WIDTH: f32 = 23.0;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PhysicalRect {
     pub x: i32,
@@ -109,6 +128,93 @@ pub fn launcher_panel(
     clamp_to_work(PhysicalRect::new(x, y, width, height), work, margin)
 }
 
+/// Logical width of the preview panel for `window_count` cards.
+///
+/// The panel grows to fit all cards when the monitor allows it, so DWM
+/// thumbnails stay aligned with their cards without scrolling. On very narrow
+/// or window-heavy setups it stops at the usable monitor width and the Slint
+/// card strip becomes scrollable.
+pub fn preview_panel_width(work: PhysicalRect, scale: f32, window_count: usize) -> f32 {
+    let usable = (work.width as f32 / scale - 2.0 * PANEL_SCREEN_MARGIN - 2.0 * SURFACE_MARGIN)
+        .max(PREVIEW_PANEL_MIN_WIDTH);
+    let desired = PREVIEW_PANEL_BASE_WIDTH + window_count.max(1) as f32 * PREVIEW_CARD_PITCH;
+    desired.clamp(PREVIEW_PANEL_MIN_WIDTH, usable)
+}
+
+/// Preview window rectangle including its transparent shadow margin.
+pub fn preview_window(
+    work: PhysicalRect,
+    dock: PhysicalRect,
+    scale: f32,
+    window_count: usize,
+    anchor_slot: i32,
+) -> PhysicalRect {
+    let panel_width = preview_panel_width(work, scale, window_count);
+    let width = scaled(panel_width, scale);
+    let height = scaled(PREVIEW_PANEL_HEIGHT, scale);
+    let slot = anchor_slot.max(0) as f32;
+    let anchor_center =
+        dock.x as f32 + (DOCK_APPS_START + slot * DOCK_APP_PITCH + DOCK_APP_HALF_WIDTH) * scale;
+    let x = (anchor_center - width as f32 / 2.0).round() as i32;
+    let y = dock.y - scaled(PREVIEW_GAP, scale) - height;
+    let panel = clamp_to_work(
+        PhysicalRect::new(x, y, width, height),
+        work,
+        scaled(PANEL_SCREEN_MARGIN, scale),
+    );
+    inflate(panel, scale)
+}
+
+/// Destination rectangle for one DWM thumbnail, relative to the preview
+/// window's client area.
+pub fn preview_thumbnail_destination(
+    preview_window: PhysicalRect,
+    index: usize,
+    scale: f32,
+) -> PhysicalRect {
+    PhysicalRect::new(
+        preview_window.x + scaled(PREVIEW_THUMB_X + index as f32 * PREVIEW_CARD_PITCH, scale),
+        preview_window.y + scaled(PREVIEW_THUMB_Y, scale),
+        scaled(PREVIEW_THUMB_WIDTH, scale),
+        scaled(PREVIEW_THUMB_HEIGHT, scale),
+    )
+}
+
+/// Center-crop a source window into the thumbnail aspect ratio. DWM otherwise
+/// stretches the thumbnail; cropping keeps text and UI proportions honest.
+pub fn thumbnail_source_rect(
+    source_width: i32,
+    source_height: i32,
+    destination_width: i32,
+    destination_height: i32,
+) -> Option<PhysicalRect> {
+    if source_width <= 0 || source_height <= 0 || destination_width <= 0 || destination_height <= 0
+    {
+        return None;
+    }
+    let source_aspect = source_width as f32 / source_height as f32;
+    let destination_aspect = destination_width as f32 / destination_height as f32;
+    if source_aspect > destination_aspect {
+        let width =
+            ((source_height as f32 * destination_aspect).round() as i32).clamp(1, source_width);
+        Some(PhysicalRect::new(
+            (source_width - width) / 2,
+            0,
+            width,
+            source_height,
+        ))
+    } else {
+        let height =
+            ((source_width as f32 / destination_aspect).round() as i32).clamp(1, source_height);
+        Some(PhysicalRect::new(
+            0,
+            (source_height - height) / 2,
+            source_width,
+            height,
+        ))
+    }
+}
+
 /// Expand a panel rect by the transparent shadow margin used by the native
 /// window host.
 pub fn inflate(rect: PhysicalRect, scale: f32) -> PhysicalRect {
@@ -118,6 +224,17 @@ pub fn inflate(rect: PhysicalRect, scale: f32) -> PhysicalRect {
         rect.y - margin,
         rect.width + margin * 2,
         rect.height + margin * 2,
+    )
+}
+
+/// Remove the transparent shadow margin from an inflated window rectangle.
+pub fn deflate(rect: PhysicalRect, scale: f32) -> PhysicalRect {
+    let margin = scaled(SURFACE_MARGIN, scale);
+    PhysicalRect::new(
+        rect.x + margin,
+        rect.y + margin,
+        (rect.width - margin * 2).max(1),
+        (rect.height - margin * 2).max(1),
     )
 }
 
@@ -222,6 +339,7 @@ mod tests {
         assert_eq!(window.y, 170);
         assert_eq!(window.width, 384 + 60);
         assert_eq!(window.height, 500 + 60);
+        assert_eq!(deflate(window, 1.25), panel);
     }
 
     #[test]
@@ -229,5 +347,71 @@ mod tests {
         assert_eq!(dock_width(1920.0, 6, false), 614.0);
         assert_eq!(dock_width(1280.0, 20, true), 1232.0);
         assert_eq!(dock_width(800.0, 30, true), 752.0);
+    }
+
+    #[test]
+    fn preview_sits_above_the_dock_and_follows_the_app_slot() {
+        let dock = dock_rect(work(), 1.0, 614.0);
+        let first = preview_window(work(), dock, 1.0, 2, 0);
+        let third = preview_window(work(), dock, 1.0, 2, 2);
+        assert_eq!(first.bottom(), dock.y - 16 + 24);
+        assert_eq!(third.x - first.x, 100);
+        assert!(first.x >= 0);
+        assert_eq!(first.width, 536);
+    }
+
+    #[test]
+    fn preview_is_clamped_on_screen_for_edge_slots() {
+        let dock = dock_rect(work(), 1.0, 614.0);
+        let far_right = preview_window(work(), dock, 1.0, 4, 999);
+        assert!(far_right.right() <= work().right() + scaled(SURFACE_MARGIN, 1.0));
+        let far_left = preview_window(work(), dock, 1.0, 4, -1);
+        assert!(far_left.x >= work().x - scaled(SURFACE_MARGIN, 1.0));
+        assert!(far_right.y >= work().y);
+    }
+
+    #[test]
+    fn preview_thumbnails_align_with_card_positions() {
+        let dock = dock_rect(work(), 1.0, 614.0);
+        let preview = preview_window(work(), dock, 1.0, 3, 1);
+        let first = preview_thumbnail_destination(preview, 0, 1.0);
+        let second = preview_thumbnail_destination(preview, 1, 1.0);
+        assert_eq!(first.x, preview.x + 46);
+        assert_eq!(first.y, preview.y + 70);
+        assert_eq!(first.width, 204);
+        assert_eq!(first.height, 92);
+        assert_eq!(second.x - first.x, 232);
+    }
+
+    #[test]
+    fn preview_scales_are_physical() {
+        let scaled_work = PhysicalRect::new(0, 0, 2560, 1440);
+        let dock = dock_rect(scaled_work, 1.5, 614.0);
+        let preview = preview_window(scaled_work, dock, 1.5, 2, 0);
+        let thumb = preview_thumbnail_destination(preview, 1, 1.5);
+        assert_eq!(thumb.x - preview.x, scaled(46.0 + 232.0, 1.5));
+        assert_eq!(thumb.width, 306);
+        assert_eq!(thumb.height, 138);
+    }
+
+    #[test]
+    fn thumbnail_source_is_center_cropped_to_the_card_aspect() {
+        // Wider than the 204:92 card: crop the sides.
+        let wide = thumbnail_source_rect(1000, 300, 204, 92).unwrap();
+        assert_eq!(wide.height, 300);
+        assert!(wide.width < 1000);
+        assert_eq!(wide.x, (1000 - wide.width) / 2);
+
+        // Taller than the card: crop top and bottom.
+        let tall = thumbnail_source_rect(300, 1000, 204, 92).unwrap();
+        assert_eq!(tall.width, 300);
+        assert!(tall.height < 1000);
+        assert_eq!(tall.y, (1000 - tall.height) / 2);
+
+        // Exactly the card aspect: no crop.
+        let matching = thumbnail_source_rect(2040, 920, 204, 92).unwrap();
+        assert_eq!(matching, PhysicalRect::new(0, 0, 2040, 920));
+
+        assert_eq!(thumbnail_source_rect(0, 100, 204, 92), None);
     }
 }

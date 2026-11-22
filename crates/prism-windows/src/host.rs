@@ -8,7 +8,7 @@ use std::mem::size_of;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
     DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_USE_IMMERSIVE_DARK_MODE,
     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DwmSetWindowAttribute,
@@ -16,27 +16,44 @@ use windows::Win32::Graphics::Dwm::{
 use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MONITOR_DEFAULTTOPRIMARY, MONITORINFO, MonitorFromPoint,
 };
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, MOD_NOREPEAT, RegisterHotKey,
+    SendInput, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent, UnregisterHotKey, VIRTUAL_KEY,
+};
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GWL_EXSTYLE, GWL_STYLE, GetWindowLongPtrW, HTCLIENT, HTTRANSPARENT, HWND_TOPMOST,
-    MA_NOACTIVATE, SW_SHOW, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetForegroundWindow,
-    SetWindowLongPtrW, SetWindowPos, ShowWindow, WM_ACTIVATE, WM_KEYDOWN, WM_MOUSEACTIVATE,
-    WM_NCHITTEST, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
-    WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
+    CallNextHookEx, GWL_EXSTYLE, GWL_STYLE, GetWindowLongPtrW, HHOOK, HTCLIENT, HTTRANSPARENT,
+    HWND_TOPMOST, KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLKHF_LOWER_IL_INJECTED, MA_NOACTIVATE, SW_SHOW,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetForegroundWindow, SetWindowLongPtrW,
+    SetWindowPos, SetWindowsHookExW, ShowWindow, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_ACTIVATE,
+    WM_HOTKEY, WM_KEYDOWN, WM_KEYUP, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCHITTEST, WM_SYSKEYUP,
+    WS_CAPTION, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_MAXIMIZEBOX,
+    WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
 };
 
+use crate::keyboard::{Hotkey, KeyDecision, WinKeyTracker};
 use crate::layout::PhysicalRect;
 
 static TASKBAR_DOCK: Mutex<Option<PhysicalRect>> = Mutex::new(None);
 static CC_PANEL: Mutex<Option<PhysicalRect>> = Mutex::new(None);
 static LAUNCHER_PANEL: Mutex<Option<PhysicalRect>> = Mutex::new(None);
+static PREVIEW_PANEL: Mutex<Option<PhysicalRect>> = Mutex::new(None);
 static CC_DEACTIVATED: AtomicBool = AtomicBool::new(false);
 static LAUNCHER_DEACTIVATED: AtomicBool = AtomicBool::new(false);
+static LAUNCHER_SHORTCUT: AtomicBool = AtomicBool::new(false);
+static PREVIEW_HOVERED: AtomicBool = AtomicBool::new(false);
+static KEY_TRACKER: Mutex<WinKeyTracker> = Mutex::new(WinKeyTracker::new());
 
 const TASKBAR_SUBCLASS_ID: usize = 0x5052_4953;
 const CC_SUBCLASS_ID: usize = 0x5052_4943;
 const LAUNCHER_SUBCLASS_ID: usize = 0x5052_494C;
+const PREVIEW_SUBCLASS_ID: usize = 0x5052_4950;
+const FALLBACK_HOTKEY_ID: i32 = 0x5052;
+// WM_MOUSELEAVE lives in Win32_UI_Controls in windows-rs; the numeric message
+// is stable Win32 ABI and avoids pulling in the whole Controls feature.
+const WM_MOUSELEAVE_MESSAGE: u32 = 0x02A3;
 
 pub fn to_wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
@@ -89,6 +106,29 @@ pub fn primary_work_area() -> PhysicalRect {
     }
 }
 
+/// Full primary-monitor rectangle. Experimental taskbar replacement positions
+/// Prism against this (the native taskbar no longer occupies work area).
+pub fn primary_monitor_area() -> PhysicalRect {
+    unsafe {
+        let monitor = MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY);
+        let mut info = MONITORINFO {
+            cbSize: size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if GetMonitorInfoW(monitor, &mut info).as_bool() {
+            let monitor = info.rcMonitor;
+            PhysicalRect::new(
+                monitor.left,
+                monitor.top,
+                monitor.right - monitor.left,
+                monitor.bottom - monitor.top,
+            )
+        } else {
+            primary_work_area()
+        }
+    }
+}
+
 pub fn set_taskbar_dock_rect(rect: Option<PhysicalRect>) {
     if let Ok(mut dock) = TASKBAR_DOCK.lock() {
         *dock = rect;
@@ -105,6 +145,24 @@ pub fn set_launcher_panel_rect(rect: Option<PhysicalRect>) {
     if let Ok(mut panel) = LAUNCHER_PANEL.lock() {
         *panel = rect;
     }
+}
+
+pub fn set_preview_panel_rect(rect: Option<PhysicalRect>) {
+    if let Ok(mut panel) = PREVIEW_PANEL.lock() {
+        *panel = rect;
+    }
+}
+
+/// Native pointer-over-preview state. Slint's root TouchArea can report false
+/// while the pointer is over a card (the card's own TouchArea is above it), so
+/// the native WM_MOUSEMOVE/WM_MOUSELEAVE tracking is authoritative for keeping
+/// the preview open.
+pub fn preview_hovered() -> bool {
+    PREVIEW_HOVERED.load(Ordering::Acquire)
+}
+
+pub fn reset_preview_hover() {
+    PREVIEW_HOVERED.store(false, Ordering::Release);
 }
 
 fn screen_point(lparam: LPARAM) -> (i32, i32) {
@@ -136,6 +194,10 @@ unsafe extern "system" fn taskbar_subclass(
     _data: usize,
 ) -> LRESULT {
     match message {
+        WM_HOTKEY if wparam.0 == FALLBACK_HOTKEY_ID as usize => {
+            LAUNCHER_SHORTCUT.store(true, Ordering::Release);
+            LRESULT(0)
+        }
         WM_NCHITTEST => {
             let dock = TASKBAR_DOCK.lock().ok().and_then(|dock| *dock);
             if let Some(dock) = dock {
@@ -202,6 +264,44 @@ unsafe extern "system" fn launcher_subclass(
                 return LRESULT(HTTRANSPARENT as isize);
             }
         }
+    }
+    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
+}
+
+unsafe extern "system" fn preview_subclass(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    _id: usize,
+    _data: usize,
+) -> LRESULT {
+    if message == WM_NCHITTEST {
+        let panel = PREVIEW_PANEL.lock().ok().and_then(|panel| *panel);
+        let Some(panel) = panel else {
+            return LRESULT(HTTRANSPARENT as isize);
+        };
+        let (x, y) = screen_point(lparam);
+        if !panel.contains(x, y) {
+            return LRESULT(HTTRANSPARENT as isize);
+        }
+    }
+    if message == WM_MOUSEACTIVATE {
+        return LRESULT(MA_NOACTIVATE as isize);
+    }
+    if message == WM_MOUSEMOVE && !PREVIEW_HOVERED.swap(true, Ordering::AcqRel) {
+        let mut track = TRACKMOUSEEVENT {
+            cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
+            dwFlags: TME_LEAVE,
+            hwndTrack: hwnd,
+            dwHoverTime: 0,
+        };
+        unsafe {
+            let _ = TrackMouseEvent(&mut track);
+        }
+    }
+    if message == WM_MOUSELEAVE_MESSAGE {
+        PREVIEW_HOVERED.store(false, Ordering::Release);
     }
     unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
 }
@@ -273,6 +373,14 @@ pub fn configure_launcher(hwnd: HWND) {
     }
 }
 
+pub fn configure_preview(hwnd: HWND) {
+    apply_popup_style(hwnd, true);
+    reset_preview_hover();
+    unsafe {
+        let _ = SetWindowSubclass(hwnd, Some(preview_subclass), PREVIEW_SUBCLASS_ID, 0);
+    }
+}
+
 pub fn position_taskbar(hwnd: HWND, rect: PhysicalRect) -> Result<(), String> {
     unsafe {
         SetWindowPos(
@@ -285,6 +393,21 @@ pub fn position_taskbar(hwnd: HWND, rect: PhysicalRect) -> Result<(), String> {
             SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED,
         )
         .map_err(|error| format!("SetWindowPos(taskbar) failed: {error}"))
+    }
+}
+
+pub fn position_preview(hwnd: HWND, rect: PhysicalRect) -> Result<(), String> {
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            rect.x,
+            rect.y,
+            rect.width,
+            rect.height,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED,
+        )
+        .map_err(|error| format!("SetWindowPos(preview) failed: {error}"))
     }
 }
 
@@ -311,5 +434,111 @@ pub fn position_panel(hwnd: HWND, rect: PhysicalRect, activate: bool) -> Result<
 pub fn hide_window(hwnd: HWND) {
     unsafe {
         let _ = ShowWindow(hwnd, windows::Win32::UI::WindowsAndMessaging::SW_HIDE);
+    }
+}
+
+unsafe extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if code < 0 {
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
+    let info = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
+    let key_up = matches!(wparam.0 as u32, WM_KEYUP | WM_SYSKEYUP);
+    let injected =
+        info.flags.contains(LLKHF_INJECTED) || info.flags.contains(LLKHF_LOWER_IL_INJECTED);
+    let decision = KEY_TRACKER
+        .lock()
+        .map(|mut tracker| tracker.handle(info.vkCode, key_up, injected))
+        .unwrap_or(KeyDecision::PassThrough);
+
+    match decision {
+        KeyDecision::PassThrough => {}
+        KeyDecision::Suppress => return LRESULT(1),
+        KeyDecision::SwallowAndToggleLauncher => {
+            LAUNCHER_SHORTCUT.store(true, Ordering::Release);
+            return LRESULT(1);
+        }
+        KeyDecision::ReplayWindowsDown(vk) => {
+            // The physical Windows key-down was swallowed. Replay it just
+            // before the combination key so the native shortcut still works.
+            send_keyboard_input(vk, false);
+        }
+    }
+    unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
+
+fn send_keyboard_input(vk: u32, key_up: bool) {
+    let input = INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VIRTUAL_KEY(vk as u16),
+                wScan: 0,
+                dwFlags: if key_up {
+                    KEYBD_EVENT_FLAGS(2)
+                } else {
+                    KEYBD_EVENT_FLAGS(0)
+                },
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    let sent = unsafe { SendInput(&[input], size_of::<INPUT>() as i32) };
+    if sent != 1 {
+        tracing::warn!(vk, "synthetic Windows key-down was not accepted");
+    }
+}
+
+/// Install the global low-level keyboard hook on the calling (UI) thread.
+///
+/// The hook is removed automatically by Windows when the process exits, and
+/// `remove_keyboard_hook` removes it on a clean shutdown.
+pub fn install_keyboard_hook() -> Result<HHOOK, String> {
+    KEY_TRACKER.lock().map(|mut tracker| tracker.reset()).ok();
+    let module = unsafe { GetModuleHandleW(None) }
+        .map_err(|error| format!("GetModuleHandleW failed: {error}"))?;
+    unsafe {
+        SetWindowsHookExW(
+            WH_KEYBOARD_LL,
+            Some(keyboard_hook),
+            Some(HINSTANCE(module.0)),
+            0,
+        )
+    }
+    .map_err(|error| format!("SetWindowsHookExW(WH_KEYBOARD_LL) failed: {error}"))
+}
+
+pub fn remove_keyboard_hook(hook: HHOOK) {
+    unsafe {
+        let _ = UnhookWindowsHookEx(hook);
+    }
+}
+
+pub fn take_launcher_shortcut() -> bool {
+    LAUNCHER_SHORTCUT.swap(false, Ordering::AcqRel)
+}
+
+pub fn register_fallback_hotkey(hwnd: HWND, hotkey: Hotkey) -> Result<(), String> {
+    unsafe {
+        RegisterHotKey(
+            Some(hwnd),
+            FALLBACK_HOTKEY_ID,
+            windows::Win32::UI::Input::KeyboardAndMouse::HOT_KEY_MODIFIERS(
+                hotkey.modifiers | MOD_NOREPEAT.0,
+            ),
+            hotkey.virtual_key,
+        )
+        .map_err(|error| {
+            format!(
+                "RegisterHotKey({:#x}, vk {:#x}) failed: {error}",
+                hotkey.modifiers, hotkey.virtual_key
+            )
+        })
+    }
+}
+
+pub fn unregister_fallback_hotkey(hwnd: HWND) {
+    unsafe {
+        let _ = UnregisterHotKey(Some(hwnd), FALLBACK_HOTKEY_ID);
     }
 }

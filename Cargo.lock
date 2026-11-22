@@ -3526,6 +3526,7 @@ dependencies = [
  "prism-ui",
  "raw-window-handle",
  "slint",
+ "thiserror 2.0.21",
  "tracing",
  "windows",
 ]

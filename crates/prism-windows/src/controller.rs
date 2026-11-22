@@ -19,11 +19,17 @@ use prism_core::{
     SystemSnapshot, WindowId, format_clock,
 };
 use prism_platform::{ActionOutcome, SystemServices, WindowServices};
-use prism_ui::model::{app_items, launcher_items, quick_toggle_items};
-use prism_ui::{AppItem, ShellControlCenter, ShellLauncher, ShellTaskbar, UiState};
+use prism_ui::model::{
+    app_items, launcher_items, quick_toggle_items, window_id_to_i32, window_items,
+};
+use prism_ui::{
+    AppItem, ShellControlCenter, ShellLauncher, ShellTaskbar, ShellWindowPreview, UiState,
+    WindowItem,
+};
 use slint::{ComponentHandle, ModelRc, VecModel};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
+use windows::Win32::UI::WindowsAndMessaging::HHOOK;
 use windows::Win32::UI::WindowsAndMessaging::WINEVENT_OUTOFCONTEXT;
 use windows::Win32::UI::WindowsAndMessaging::{
     EVENT_OBJECT_CREATE, EVENT_OBJECT_NAMECHANGE, EVENT_SYSTEM_FOREGROUND,
@@ -35,6 +41,9 @@ use crate::icons;
 use crate::layout::{self, PhysicalRect};
 use crate::naming::{friendly_app_name, normalized_exe_id};
 use crate::platform::WindowsPlatform;
+use crate::preview::{PreviewThumbnails, ThumbnailTarget};
+use crate::recovery::ReplacementMarker;
+use crate::taskbar_replacement::{self, Heartbeat};
 use crate::window::{self, Foreground, TrackedWindow};
 
 static EVENT_DIRTY: AtomicBool = AtomicBool::new(false);
@@ -61,6 +70,7 @@ struct WindowsShell {
     taskbar: ShellTaskbar,
     control_center: ShellControlCenter,
     launcher: ShellLauncher,
+    window_preview: ShellWindowPreview,
     platform: WindowsPlatform,
     config: PrismConfig,
     dock: DockState,
@@ -69,12 +79,16 @@ struct WindowsShell {
     taskbar_hwnd: Option<HWND>,
     cc_hwnd: Option<HWND>,
     launcher_hwnd: Option<HWND>,
+    preview_hwnd: Option<HWND>,
     cc_visible: bool,
     launcher_visible: bool,
+    preview_visible: bool,
     cc_open: bool,
     launcher_open: bool,
+    preview_open: bool,
     cc_hide_at: Option<Instant>,
     launcher_hide_at: Option<Instant>,
+    preview_hide_at: Option<Instant>,
     cc_opened_at: Option<Instant>,
     launcher_opened_at: Option<Instant>,
     launcher_query: String,
@@ -84,6 +98,7 @@ struct WindowsShell {
     taskbar_bounds: Option<PhysicalRect>,
     cc_bounds: Option<PhysicalRect>,
     launcher_bounds: Option<PhysicalRect>,
+    preview_bounds: Option<PhysicalRect>,
     startup_started_at: Option<Instant>,
     pending_cc_focus: bool,
     pending_launcher_focus: bool,
@@ -94,18 +109,39 @@ struct WindowsShell {
     last_clock_minute: Option<(u32, u32)>,
     hooks: Vec<HWINEVENTHOOK>,
     last_refresh: Option<Instant>,
+    hovered_app: Option<String>,
+    hover_generation: u64,
+    hover_suppressed_until: Option<Instant>,
+    preview_app_id: Option<String>,
+    preview_anchor_slot: i32,
+    preview_hovered: bool,
+    preview_close_generation: u64,
+    preview_thumbnails_enabled: bool,
+    preview_window_ids: HashMap<i32, u64>,
+    preview_thumbnails: PreviewThumbnails,
+    replacement_active: bool,
+    replacement_marker: Option<ReplacementMarker>,
+    heartbeat: Option<Heartbeat>,
+    keyboard_hook: Option<HHOOK>,
+    fallback_hotkey_registered: bool,
     quit: bool,
 }
 
 pub fn run_shell(config: PrismConfig) -> Result<(), Box<dyn Error>> {
+    // If a previous process left the native taskbar hidden, put it back before
+    // creating any Prism surface.
+    taskbar_replacement::recover_stale_marker();
+
     let taskbar = ShellTaskbar::new()?;
     let control_center = ShellControlCenter::new()?;
     let launcher = ShellLauncher::new()?;
+    let window_preview = ShellWindowPreview::new()?;
 
     let shell = Rc::new(RefCell::new(WindowsShell::new(
         taskbar,
         control_center,
         launcher,
+        window_preview,
         config,
     )));
     shell.borrow_mut().self_weak = Rc::downgrade(&shell);
@@ -128,6 +164,29 @@ pub fn run_shell(config: PrismConfig) -> Result<(), Box<dyn Error>> {
         },
     );
 
+    // A dedicated, opt-in shortcut poll keeps standalone-Windows-key latency
+    // low without making the idle shell wake up frequently. It is not started
+    // unless the user enabled the integration.
+    let shortcut_timer = slint::Timer::default();
+    let shortcuts_enabled = {
+        let config = &shell.borrow().config.experimental;
+        config.windows_key_launcher || config.windows_key_fallback_hotkey
+    };
+    if shortcuts_enabled {
+        let weak = Rc::downgrade(&shell);
+        shortcut_timer.start(
+            slint::TimerMode::Repeated,
+            Duration::from_millis(50),
+            move || {
+                if let Some(shell) = weak.upgrade()
+                    && let Ok(mut shell) = shell.try_borrow_mut()
+                {
+                    shell.handle_launcher_shortcut();
+                }
+            },
+        );
+    }
+
     // The taskbar HWND is created by winit during the first event-loop
     // iteration, not by show(). Resolve it as soon as the loop starts.
     let weak = Rc::downgrade(&shell);
@@ -142,6 +201,7 @@ pub fn run_shell(config: PrismConfig) -> Result<(), Box<dyn Error>> {
     slint::run_event_loop()?;
     shell.borrow_mut().shutdown();
     drop(timer);
+    drop(shortcut_timer);
 
     if let Some(error) = shell.borrow().fatal_error.clone() {
         return Err(error.into());
@@ -154,6 +214,7 @@ impl WindowsShell {
         taskbar: ShellTaskbar,
         control_center: ShellControlCenter,
         launcher: ShellLauncher,
+        window_preview: ShellWindowPreview,
         config: PrismConfig,
     ) -> Self {
         let work = host::primary_work_area();
@@ -176,6 +237,7 @@ impl WindowsShell {
             taskbar,
             control_center,
             launcher,
+            window_preview,
             platform: WindowsPlatform,
             config,
             dock,
@@ -184,12 +246,16 @@ impl WindowsShell {
             taskbar_hwnd: None,
             cc_hwnd: None,
             launcher_hwnd: None,
+            preview_hwnd: None,
             cc_visible: false,
             launcher_visible: false,
+            preview_visible: false,
             cc_open: false,
             launcher_open: false,
+            preview_open: false,
             cc_hide_at: None,
             launcher_hide_at: None,
+            preview_hide_at: None,
             cc_opened_at: None,
             launcher_opened_at: None,
             launcher_query: String::new(),
@@ -199,6 +265,7 @@ impl WindowsShell {
             taskbar_bounds: None,
             cc_bounds: None,
             launcher_bounds: None,
+            preview_bounds: None,
             startup_started_at: None,
             pending_cc_focus: false,
             pending_launcher_focus: false,
@@ -209,6 +276,21 @@ impl WindowsShell {
             last_clock_minute: None,
             hooks: Vec::new(),
             last_refresh: None,
+            hovered_app: None,
+            hover_generation: 0,
+            hover_suppressed_until: None,
+            preview_app_id: None,
+            preview_anchor_slot: -1,
+            preview_hovered: false,
+            preview_close_generation: 0,
+            preview_thumbnails_enabled: false,
+            preview_window_ids: HashMap::new(),
+            preview_thumbnails: PreviewThumbnails::new(),
+            replacement_active: false,
+            replacement_marker: None,
+            heartbeat: None,
+            keyboard_hook: None,
+            fallback_hotkey_registered: false,
             quit: false,
         };
         shell.apply();
@@ -249,7 +331,22 @@ impl WindowsShell {
 
         self.install_event_hooks();
         self.refresh();
+        self.precreate_preview_window();
+        self.start_experimental_integrations();
         self.startup_started_at = None;
+    }
+
+    fn start_experimental_integrations(&mut self) {
+        if self.config.experimental.taskbar_replacement {
+            self.enable_taskbar_replacement();
+        }
+        if self.config.experimental.windows_key_launcher
+            || self.config.experimental.windows_key_fallback_hotkey
+        {
+            self.enable_windows_key_integration();
+        }
+        self.apply();
+        self.update_layout();
     }
 
     fn resolve_native_windows(&mut self) {
@@ -280,6 +377,9 @@ impl WindowsShell {
         if self.launcher_visible && self.launcher_hwnd.is_none() {
             self.try_attach_launcher();
         }
+        if self.preview_visible && self.preview_hwnd.is_none() {
+            self.try_attach_preview();
+        }
     }
 
     fn schedule_tick(&self, delay: Duration) {
@@ -293,15 +393,49 @@ impl WindowsShell {
         });
     }
 
+    fn schedule<F>(&self, delay: Duration, callback: F)
+    where
+        F: FnOnce(&mut Self) + 'static,
+    {
+        let Some(shell) = self.self_weak.upgrade() else {
+            return;
+        };
+        slint::Timer::single_shot(delay, move || {
+            if let Ok(mut shell) = shell.try_borrow_mut() {
+                callback(&mut shell);
+            }
+        });
+    }
+
     fn shutdown(&mut self) {
         for hook in self.hooks.drain(..) {
             unsafe {
                 let _ = UnhookWinEvent(hook);
             }
         }
+        if let Some(hook) = self.keyboard_hook.take() {
+            host::remove_keyboard_hook(hook);
+        }
+        if self.fallback_hotkey_registered
+            && let Some(hwnd) = self.taskbar_hwnd
+        {
+            host::unregister_fallback_hotkey(hwnd);
+            self.fallback_hotkey_registered = false;
+        }
+        self.close_preview();
+        self.preview_thumbnails.clear();
+        self.hide_preview_native();
         self.hide_cc_native();
         self.hide_launcher_native();
-        tracing::info!("Prism Windows shell stopped; Explorer was not modified");
+        if self.replacement_active && !self.restore_taskbar_replacement("clean shutdown") {
+            tracing::error!(
+                "native taskbar restore failed during shutdown; prism-recovery.exe will retry"
+            );
+        }
+        tracing::info!(
+            replacement_active = self.replacement_active,
+            "Prism Windows shell stopped"
+        );
     }
 
     fn install_event_hooks(&mut self) {
@@ -351,10 +485,137 @@ impl WindowsShell {
         );
     }
 
+    fn enable_taskbar_replacement(&mut self) {
+        let pid = std::process::id();
+        let heartbeat = match Heartbeat::create(pid) {
+            Ok(heartbeat) => heartbeat,
+            Err(error) => {
+                tracing::error!(%error, "taskbar replacement unavailable");
+                return;
+            }
+        };
+        if let Err(error) = taskbar_replacement::spawn_watchdog(pid) {
+            tracing::error!(%error, "taskbar replacement disabled");
+            return;
+        }
+        match taskbar_replacement::hide_native_taskbars() {
+            Ok(marker) => {
+                self.heartbeat = Some(heartbeat);
+                self.replacement_marker = Some(marker);
+                self.replacement_active = true;
+                tracing::warn!(
+                    "EXPERIMENTAL taskbar replacement active; explorer remains running and \
+                     the recovery watchdog is armed"
+                );
+                self.update_layout();
+                self.apply();
+            }
+            Err(error) => {
+                tracing::error!(%error, "taskbar replacement aborted; native taskbar restored");
+            }
+        }
+    }
+
+    fn restore_taskbar_replacement(&mut self, reason: &str) -> bool {
+        let Some(marker) = self.replacement_marker.clone() else {
+            self.replacement_active = false;
+            self.heartbeat = None;
+            return true;
+        };
+        match taskbar_replacement::restore_from_marker(&marker) {
+            Ok(()) => {
+                tracing::info!(reason, "native Windows taskbar restored");
+                self.replacement_active = false;
+                self.replacement_marker = None;
+                self.heartbeat = None;
+                self.update_layout();
+                self.apply();
+                true
+            }
+            Err(error) => {
+                tracing::error!(%reason, %error, "native Windows taskbar restore failed");
+                false
+            }
+        }
+    }
+
+    fn check_taskbar_replacement_health(&mut self) {
+        if !self.replacement_active {
+            return;
+        }
+        if taskbar_replacement::native_primary_taskbar_visible() {
+            // Explorer restarted or another tool restored the taskbar. Never
+            // fight it by hiding again automatically; coexistence is the safe
+            // state and the user can explicitly opt in again.
+            tracing::warn!("native Windows taskbar became visible again; leaving replacement mode");
+            if let Some(marker) = self.replacement_marker.clone() {
+                let _ = taskbar_replacement::restore_from_marker(&marker);
+            }
+            self.replacement_active = false;
+            self.replacement_marker = None;
+            self.heartbeat = None;
+            self.update_layout();
+            self.apply();
+        }
+    }
+
+    fn enable_windows_key_integration(&mut self) {
+        let hook = if self.config.experimental.windows_key_launcher {
+            match host::install_keyboard_hook() {
+                Ok(hook) => {
+                    tracing::info!(
+                        "experimental standalone Windows-key hook installed; combinations pass through"
+                    );
+                    self.keyboard_hook = Some(hook);
+                    true
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        "standalone Windows-key hook failed; using the fallback shortcut"
+                    );
+                    false
+                }
+            }
+        } else {
+            false
+        };
+
+        let register_fallback = !hook || self.config.experimental.windows_key_fallback_hotkey;
+        if register_fallback && let Some(hwnd) = self.taskbar_hwnd {
+            let shortcut = &self.config.experimental.windows_key_fallback_shortcut;
+            let hotkey = crate::keyboard::parse_hotkey(shortcut).unwrap_or_else(|error| {
+                tracing::warn!(
+                    %error,
+                    "invalid windows_key_fallback_shortcut; using Ctrl+Alt+Space"
+                );
+                crate::keyboard::parse_hotkey("Ctrl+Alt+Space")
+                    .expect("built-in fallback hotkey is valid")
+            });
+            match host::register_fallback_hotkey(hwnd, hotkey) {
+                Ok(()) => {
+                    self.fallback_hotkey_registered = true;
+                    tracing::info!(
+                        shortcut = %shortcut,
+                        "fallback launcher shortcut registered"
+                    );
+                }
+                Err(error) => tracing::warn!(%error, "fallback launcher shortcut unavailable"),
+            }
+        }
+    }
+
+    fn handle_launcher_shortcut(&mut self) {
+        if host::take_launcher_shortcut() {
+            self.toggle_launcher();
+        }
+    }
+
     fn tick(&mut self) {
         if self.quit {
             return;
         }
+        self.handle_launcher_shortcut();
         self.resolve_native_windows();
         if self.quit {
             return;
@@ -396,6 +657,23 @@ impl WindowsShell {
             self.launcher_hide_at = None;
             self.hide_launcher_native();
         }
+        if self.preview_open {
+            if host::preview_hovered() {
+                self.preview_hovered = true;
+                self.preview_hide_at = None;
+            } else if self.preview_hovered && self.hovered_app.is_none() {
+                self.preview_hovered = false;
+                self.schedule_preview_close(220);
+            }
+        }
+        if self.preview_hide_at.is_some_and(|at| now >= at) {
+            self.preview_hide_at = None;
+            self.hide_preview_native();
+        }
+        if let Some(heartbeat) = &self.heartbeat {
+            heartbeat.pulse();
+        }
+        self.check_taskbar_replacement_health();
     }
 
     fn refresh(&mut self) {
@@ -440,6 +718,9 @@ impl WindowsShell {
         }
         self.dock = dock;
         self.apply();
+        if self.preview_open {
+            self.refresh_preview_contents();
+        }
         self.update_layout();
         self.last_refresh = Some(Instant::now());
         tracing::debug!(
@@ -487,19 +768,15 @@ impl WindowsShell {
     fn update_icons(&mut self, tracked: &[TrackedWindow]) {
         for app in &self.pinned {
             let key = app.definition.id.as_str().to_owned();
-            if !self.icon_cache.contains_key(&key) {
-                self.icon_cache
-                    .insert(key, icons::load_icon(&app.icon_source));
-            }
+            self.icon_cache
+                .entry(key)
+                .or_insert_with(|| icons::load_icon(&app.icon_source));
         }
         for app in tracked {
             let key = app.app.id.clone();
-            if !self.icon_cache.contains_key(&key) {
-                self.icon_cache.insert(
-                    key,
-                    app.app.icon_source.as_deref().and_then(icons::load_icon),
-                );
-            }
+            self.icon_cache
+                .entry(key)
+                .or_insert_with(|| app.app.icon_source.as_deref().and_then(icons::load_icon));
         }
     }
 
@@ -544,8 +821,11 @@ impl WindowsShell {
             &visible,
             fit.hidden_apps,
             &snapshot,
-            self.cc_open,
-            self.launcher_open,
+            TaskbarViewState {
+                cc_open: self.cc_open,
+                launcher_open: self.launcher_open,
+                replacement_active: self.replacement_active,
+            },
             &self.config,
         );
         set_control_center_state(
@@ -553,6 +833,7 @@ impl WindowsShell {
             &quick_toggles,
             &snapshot,
             self.cc_open,
+            self.replacement_active,
         );
         set_launcher_state(
             &self.launcher,
@@ -571,8 +852,16 @@ impl WindowsShell {
         host::set_taskbar_dock_rect(Some(self.dock_geometry));
     }
 
+    fn effective_work_area(&self) -> PhysicalRect {
+        if self.replacement_active {
+            host::primary_monitor_area()
+        } else {
+            host::primary_work_area()
+        }
+    }
+
     fn update_layout(&mut self) {
-        let work = host::primary_work_area();
+        let work = self.effective_work_area();
         let scale = self
             .taskbar_hwnd
             .map(host::window_scale)
@@ -629,10 +918,14 @@ impl WindowsShell {
                 }
             }
         }
+
+        if self.preview_visible {
+            self.update_preview_layout();
+        }
     }
 
     fn check_display_change(&mut self) {
-        let work = host::primary_work_area();
+        let work = self.effective_work_area();
         let scale = self
             .taskbar_hwnd
             .map(host::window_scale)
@@ -757,6 +1050,9 @@ impl WindowsShell {
             tracing::error!(%error, "could not create Control Center");
             return;
         }
+        self.hover_generation = self.hover_generation.wrapping_add(1);
+        self.hovered_app = None;
+        self.close_preview();
         self.close_launcher_immediate();
         self.cc_open = true;
         self.cc_hide_at = None;
@@ -777,6 +1073,9 @@ impl WindowsShell {
             tracing::error!(%error, "could not create launcher");
             return;
         }
+        self.hover_generation = self.hover_generation.wrapping_add(1);
+        self.hovered_app = None;
+        self.close_preview();
         self.close_control_center_immediate();
         self.launcher_open = true;
         self.launcher_hide_at = None;
@@ -849,6 +1148,371 @@ impl WindowsShell {
         host::set_launcher_panel_rect(None);
     }
 
+    fn decorated_window_items(&self, app_id: &str) -> Vec<WindowItem> {
+        let mut items = window_items(&self.dock, app_id);
+        if let Some(Some(icon)) = self.icon_cache.get(app_id) {
+            for item in &mut items {
+                item.has_icon = true;
+                item.icon = icon.clone();
+            }
+        }
+        items
+    }
+
+    fn precreate_preview_window(&mut self) {
+        if self.preview_visible || self.preview_open {
+            return;
+        }
+        // Create and style the preview HWND once while it is empty. The first
+        // hover then shows an already non-activating tool window instead of
+        // letting a fresh native window steal focus from the active app.
+        if let Err(error) = self.window_preview.show() {
+            tracing::warn!(%error, "preview window pre-creation failed");
+            return;
+        }
+        self.preview_visible = true;
+        self.preview_hwnd = None;
+        self.preview_bounds = None;
+        self.schedule_tick(Duration::from_millis(16));
+    }
+
+    fn ensure_preview_window(&mut self) {
+        if self.preview_visible {
+            return;
+        }
+        if let Err(error) = self.window_preview.show() {
+            tracing::warn!(%error, "preview window creation failed");
+            self.preview_open = false;
+            return;
+        }
+        self.preview_visible = true;
+        self.preview_hwnd = None;
+        self.preview_bounds = None;
+        self.schedule_tick(Duration::from_millis(16));
+    }
+
+    fn try_attach_preview(&mut self) {
+        if !self.preview_visible || self.preview_hwnd.is_some() {
+            return;
+        }
+        let Ok(hwnd) = host::hwnd_of(self.window_preview.window()) else {
+            return;
+        };
+        host::configure_preview(hwnd);
+        self.preview_hwnd = Some(hwnd);
+        self.preview_bounds = None;
+        if !self.preview_open {
+            // This was the startup pre-creation path. Keep the HWND hidden
+            // until a real hover opens the preview.
+            self.hide_preview_native();
+            return;
+        }
+        self.update_preview_layout();
+    }
+
+    fn update_preview_layout(&mut self) {
+        let Some(app_id) = self.preview_app_id.clone() else {
+            return;
+        };
+        let Some(entry) = self.dock.app(&AppId::new(&app_id)) else {
+            return;
+        };
+        let count = entry.windows.len();
+        if count == 0 {
+            return;
+        }
+        let panel_width = layout::preview_panel_width(self.work, self.scale, count);
+        self.window_preview.set_stage_width(panel_width + 48.0);
+        self.window_preview.set_panel_width(panel_width);
+        let window_rect = layout::preview_window(
+            self.work,
+            self.dock_geometry,
+            self.scale,
+            count,
+            self.preview_anchor_slot,
+        );
+        let panel_rect = layout::deflate(window_rect, self.scale);
+        host::set_preview_panel_rect(Some(panel_rect));
+        if let Some(hwnd) = self.preview_hwnd
+            && self.preview_bounds != Some(window_rect)
+            && let Err(error) = host::position_preview(hwnd, window_rect)
+        {
+            tracing::warn!(%error, "preview positioning failed");
+            return;
+        }
+        self.preview_bounds = Some(window_rect);
+        self.sync_preview_thumbnails();
+    }
+
+    fn sync_preview_thumbnails(&mut self) {
+        let Some(hwnd) = self.preview_hwnd else {
+            return;
+        };
+        let Some(window_rect) = self.preview_bounds else {
+            return;
+        };
+        if !self.preview_open || !self.preview_thumbnails_enabled {
+            self.preview_thumbnails.clear();
+            return;
+        }
+        let Some(app_id) = self.preview_app_id.as_deref() else {
+            self.preview_thumbnails.clear();
+            return;
+        };
+        let targets: Vec<ThumbnailTarget> = self
+            .dock
+            .app(&AppId::new(app_id))
+            .map(|entry| {
+                entry
+                    .windows
+                    .iter()
+                    .map(|window| ThumbnailTarget {
+                        hwnd: window.id.get(),
+                        minimized: window.minimized,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        self.preview_thumbnails
+            .sync(hwnd, window_rect, self.scale, &targets);
+    }
+
+    fn refresh_preview_contents(&mut self) {
+        let Some(app_id) = self.preview_app_id.clone() else {
+            self.close_preview();
+            return;
+        };
+        let Some(entry) = self.dock.app(&AppId::new(&app_id)) else {
+            self.close_preview();
+            return;
+        };
+        if entry.windows.is_empty() {
+            self.close_preview();
+            return;
+        }
+        let app_name = entry.definition.name.clone();
+        let windows = entry.windows.clone();
+        let slot = self
+            .dock
+            .apps()
+            .iter()
+            .position(|entry| entry.definition.id.as_str() == app_id)
+            .and_then(|slot| i32::try_from(slot).ok())
+            .unwrap_or(-1);
+        let items = self.decorated_window_items(&app_id);
+
+        self.preview_anchor_slot = slot;
+        self.preview_window_ids.clear();
+        for window in &windows {
+            self.preview_window_ids
+                .insert(window_id_to_i32(window.id), window.id.get());
+        }
+
+        let state = self.window_preview.global::<UiState>();
+        state.set_preview_live_thumbnails(true);
+        state.set_preview_open(true);
+        state.set_preview_app_id(app_id.as_str().into());
+        state.set_preview_app_name(app_name.into());
+        state.set_preview_anchor_slot(slot);
+        state.set_preview_windows(ModelRc::new(VecModel::from(items)));
+        self.update_preview_layout();
+    }
+
+    fn app_hovered(&mut self, id: &str) {
+        self.hover_generation = self.hover_generation.wrapping_add(1);
+        let generation = self.hover_generation;
+        self.hovered_app = Some(id.to_owned());
+        // Any new hover cancels a pending preview close.
+        self.preview_close_generation = self.preview_close_generation.wrapping_add(1);
+
+        // A click just committed an action (often minimize). Do not pop the
+        // preview straight back open under the pointer.
+        if self
+            .hover_suppressed_until
+            .is_some_and(|until| Instant::now() < until)
+        {
+            return;
+        }
+
+        if self.preview_open && self.preview_app_id.as_deref() != Some(id) {
+            self.close_preview();
+        }
+
+        let Some(entry) = self.dock.app(&AppId::new(id)) else {
+            return;
+        };
+        if !entry.is_running() {
+            return;
+        }
+        let app_id = id.to_owned();
+        self.schedule(Duration::from_millis(300), move |shell| {
+            if shell.hover_generation != generation
+                || shell.hovered_app.as_deref() != Some(app_id.as_str())
+                || shell.cc_open
+                || shell.launcher_open
+            {
+                return;
+            }
+            if shell
+                .dock
+                .app(&AppId::new(&app_id))
+                .is_some_and(|entry| entry.is_running())
+            {
+                shell.open_preview(&app_id);
+            }
+        });
+    }
+
+    fn app_unhovered(&mut self, id: &str) {
+        if self.hovered_app.as_deref() != Some(id) {
+            return;
+        }
+        self.hover_generation = self.hover_generation.wrapping_add(1);
+        self.hovered_app = None;
+        if self.preview_open && !self.preview_hovered {
+            self.schedule_preview_close(320);
+        }
+    }
+
+    fn preview_hovered_changed(&mut self, hovered: bool) {
+        if !self.preview_open {
+            return;
+        }
+        if hovered {
+            self.preview_hovered = true;
+            self.preview_close_generation = self.preview_close_generation.wrapping_add(1);
+            self.preview_hide_at = None;
+        }
+        // A false value is not authoritative: Slint card TouchAreas sit above
+        // the root hover area. The 300 ms tick uses native WM_MOUSELEAVE state
+        // to decide when the pointer has actually left the combined area.
+    }
+
+    fn open_preview(&mut self, app_id: &str) {
+        let Some(entry) = self.dock.app(&AppId::new(app_id)) else {
+            return;
+        };
+        if entry.windows.is_empty() {
+            return;
+        }
+        self.preview_close_generation = self.preview_close_generation.wrapping_add(1);
+        self.preview_thumbnails.clear();
+        self.preview_app_id = Some(app_id.to_owned());
+        self.preview_open = true;
+        self.preview_hovered = false;
+        self.preview_thumbnails_enabled = false;
+        host::reset_preview_hover();
+        self.preview_hide_at = None;
+        self.ensure_preview_window();
+        // The Slint WindowPreview owns its short fade; the native window stays
+        // visible until that completes. DWM thumbnails cannot inherit Slint's
+        // opacity, so register them only after the surface has faded in.
+        self.refresh_preview_contents();
+        self.schedule(Duration::from_millis(170), |shell| {
+            if shell.preview_open {
+                shell.preview_thumbnails_enabled = true;
+                shell.sync_preview_thumbnails();
+            }
+        });
+    }
+
+    fn schedule_preview_close(&mut self, delay_ms: u64) {
+        if !self.preview_open {
+            return;
+        }
+        self.preview_close_generation = self.preview_close_generation.wrapping_add(1);
+        let generation = self.preview_close_generation;
+        self.schedule(Duration::from_millis(delay_ms), move |shell| {
+            if shell.preview_close_generation == generation
+                && !shell.preview_hovered
+                && !host::preview_hovered()
+                && shell.hovered_app.is_none()
+            {
+                shell.close_preview();
+            }
+        });
+    }
+
+    fn close_preview(&mut self) {
+        self.preview_close_generation = self.preview_close_generation.wrapping_add(1);
+        self.preview_hovered = false;
+        self.preview_app_id = None;
+        self.preview_thumbnails_enabled = false;
+        self.preview_thumbnails.clear();
+        host::set_preview_panel_rect(None);
+        self.window_preview
+            .global::<UiState>()
+            .set_preview_open(false);
+        if !self.preview_open && !self.preview_visible {
+            return;
+        }
+        self.preview_open = false;
+        if self.preview_visible {
+            self.preview_hide_at = Some(Instant::now() + Duration::from_millis(230));
+        }
+    }
+
+    fn hide_preview_native(&mut self) {
+        self.preview_thumbnails.clear();
+        host::set_preview_panel_rect(None);
+        if self.preview_visible
+            && self.window_preview.hide().is_err()
+            && let Some(hwnd) = self.preview_hwnd
+        {
+            host::hide_window(hwnd);
+        }
+        self.preview_visible = false;
+        self.preview_hwnd = None;
+        self.preview_bounds = None;
+        self.preview_window_ids.clear();
+        self.preview_open = false;
+        self.preview_thumbnails_enabled = false;
+        self.preview_hide_at = None;
+        self.preview_hovered = false;
+        host::reset_preview_hover();
+    }
+
+    fn preview_window_activated(&mut self, ui_id: i32) {
+        let Some(hwnd) = self.preview_window_ids.get(&ui_id).copied() else {
+            return;
+        };
+        let window = WindowId::new(hwnd);
+        self.close_preview();
+        self.close_control_center_immediate();
+        self.close_launcher_immediate();
+        if let Err(error) = self.platform.activate(window) {
+            tracing::warn!(%error, "preview window activation failed");
+        }
+        self.dock.record_activated(window);
+        self.apply();
+        EVENT_DIRTY.store(true, Ordering::Release);
+    }
+
+    fn preview_window_closed(&mut self, ui_id: i32) {
+        let Some(hwnd) = self.preview_window_ids.get(&ui_id).copied() else {
+            return;
+        };
+        let window = WindowId::new(hwnd);
+        if let Err(error) = self.platform.close(window) {
+            tracing::warn!(%error, "preview window close failed");
+            EVENT_DIRTY.store(true, Ordering::Release);
+            return;
+        }
+        self.dock.record_closed(window);
+        if self
+            .preview_app_id
+            .as_deref()
+            .and_then(|id| self.dock.app(&AppId::new(id)))
+            .is_none_or(|entry| entry.windows.is_empty())
+        {
+            self.close_preview();
+        } else {
+            self.refresh_preview_contents();
+        }
+        self.apply();
+        EVENT_DIRTY.store(true, Ordering::Release);
+    }
+
     fn toggle_control_center(&mut self) {
         if self.cc_open {
             self.close_control_center();
@@ -866,6 +1530,10 @@ impl WindowsShell {
     }
 
     fn app_clicked(&mut self, id: &str) {
+        self.hover_generation = self.hover_generation.wrapping_add(1);
+        self.hovered_app = None;
+        self.hover_suppressed_until = Some(Instant::now() + Duration::from_millis(650));
+        self.close_preview();
         self.close_control_center_immediate();
         self.close_launcher_immediate();
         let app_id = AppId::new(id);
@@ -1041,22 +1709,35 @@ fn discover_pinned_apps() -> Vec<PinnedApp> {
     apps
 }
 
+struct TaskbarViewState {
+    cc_open: bool,
+    launcher_open: bool,
+    replacement_active: bool,
+}
+
 fn set_taskbar_state(
     window: &ShellTaskbar,
     apps: &[AppItem],
     hidden: usize,
     snapshot: &SystemSnapshot,
-    cc_open: bool,
-    launcher_open: bool,
+    view: TaskbarViewState,
     config: &PrismConfig,
 ) {
     let state = window.global::<UiState>();
     state.set_development_preview(false);
-    state.set_platform_label("Windows 11 · native taskbar".into());
     state.set_apps(ModelRc::new(VecModel::from(apps.to_vec())));
     state.set_hidden_app_count(i32::try_from(hidden).unwrap_or(i32::MAX));
-    state.set_cc_open(cc_open);
-    state.set_launcher_open(launcher_open);
+    state.set_cc_open(view.cc_open);
+    state.set_launcher_open(view.launcher_open);
+    state.set_taskbar_replacement_active(view.replacement_active);
+    state.set_platform_label(
+        if view.replacement_active {
+            "Windows 11 · taskbar replacement"
+        } else {
+            "Windows 11 · native taskbar"
+        }
+        .into(),
+    );
     state.set_show_audio_status(false);
     state.set_show_wifi_status(false);
     state.set_preview_open(false);
@@ -1090,12 +1771,28 @@ fn set_control_center_state(
     quick_toggles: &[prism_ui::ToggleItem],
     snapshot: &SystemSnapshot,
     cc_open: bool,
+    taskbar_replacement_active: bool,
 ) {
     let state = window.global::<UiState>();
     state.set_development_preview(false);
-    state.set_platform_label("Windows 11 · native taskbar".into());
+    state.set_platform_label(
+        if taskbar_replacement_active {
+            "Windows 11 · taskbar replacement"
+        } else {
+            "Windows 11 · native taskbar"
+        }
+        .into(),
+    );
     state.set_version_label(env!("CARGO_PKG_VERSION").into());
-    state.set_footer_label("Windows backend · native taskbar + Windows settings".into());
+    state.set_footer_label(
+        if taskbar_replacement_active {
+            "Native taskbar hidden · recovery watchdog armed · use Restore bar or prism-recovery"
+        } else {
+            "Windows backend · native taskbar + Windows settings"
+        }
+        .into(),
+    );
+    state.set_taskbar_replacement_active(taskbar_replacement_active);
     state.set_show_unsafe_power(false);
     state.set_quick_toggles(ModelRc::new(VecModel::from(quick_toggles.to_vec())));
     state.set_cc_open(cc_open);
@@ -1163,6 +1860,30 @@ fn wire_callbacks(shell: &Rc<RefCell<WindowsShell>>) {
                     && let Ok(mut shell) = shell.try_borrow_mut()
                 {
                     shell.app_clicked(id.as_str());
+                }
+            });
+    }
+    {
+        let weak = Rc::downgrade(shell);
+        taskbar
+            .global::<UiState>()
+            .on_app_hovered(move |id: slint::SharedString| {
+                if let Some(shell) = weak.upgrade()
+                    && let Ok(mut shell) = shell.try_borrow_mut()
+                {
+                    shell.app_hovered(id.as_str());
+                }
+            });
+    }
+    {
+        let weak = Rc::downgrade(shell);
+        taskbar
+            .global::<UiState>()
+            .on_app_unhovered(move |id: slint::SharedString| {
+                if let Some(shell) = weak.upgrade()
+                    && let Ok(mut shell) = shell.try_borrow_mut()
+                {
+                    shell.app_unhovered(id.as_str());
                 }
             });
     }
@@ -1248,6 +1969,28 @@ fn wire_callbacks(shell: &Rc<RefCell<WindowsShell>>) {
             }
         });
     }
+    {
+        let weak = Rc::downgrade(shell);
+        control_center
+            .global::<UiState>()
+            .on_restore_native_taskbar(move || {
+                if let Some(shell) = weak.upgrade()
+                    && let Ok(mut shell) = shell.try_borrow_mut()
+                {
+                    if shell.replacement_active {
+                        shell.restore_taskbar_replacement("Control Center");
+                    } else {
+                        // Even outside replacement mode this is a safe explicit
+                        // recovery action: show the native taskbar immediately.
+                        if let Err(error) = taskbar_replacement::restore_all_native_taskbars() {
+                            tracing::warn!(%error, "manual taskbar restore failed");
+                        }
+                    }
+                    shell.update_layout();
+                    shell.apply();
+                }
+            });
+    }
 
     let launcher = shell.borrow().launcher.clone_strong();
     {
@@ -1283,5 +2026,53 @@ fn wire_callbacks(shell: &Rc<RefCell<WindowsShell>>) {
                 shell.close_launcher();
             }
         });
+    }
+
+    let preview = shell.borrow().window_preview.clone_strong();
+    {
+        let weak = Rc::downgrade(shell);
+        preview
+            .global::<UiState>()
+            .on_window_activated(move |id: i32| {
+                if let Some(shell) = weak.upgrade()
+                    && let Ok(mut shell) = shell.try_borrow_mut()
+                {
+                    shell.preview_window_activated(id);
+                }
+            });
+    }
+    {
+        let weak = Rc::downgrade(shell);
+        preview
+            .global::<UiState>()
+            .on_window_closed(move |id: i32| {
+                if let Some(shell) = weak.upgrade()
+                    && let Ok(mut shell) = shell.try_borrow_mut()
+                {
+                    shell.preview_window_closed(id);
+                }
+            });
+    }
+    {
+        let weak = Rc::downgrade(shell);
+        preview.global::<UiState>().on_close_preview(move || {
+            if let Some(shell) = weak.upgrade()
+                && let Ok(mut shell) = shell.try_borrow_mut()
+            {
+                shell.close_preview();
+            }
+        });
+    }
+    {
+        let weak = Rc::downgrade(shell);
+        preview
+            .global::<UiState>()
+            .on_keep_preview_open(move |hovered: bool| {
+                if let Some(shell) = weak.upgrade()
+                    && let Ok(mut shell) = shell.try_borrow_mut()
+                {
+                    shell.preview_hovered_changed(hovered);
+                }
+            });
     }
 }

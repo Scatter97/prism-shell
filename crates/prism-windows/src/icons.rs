@@ -88,14 +88,16 @@ unsafe fn bitmap_to_image(
         return None;
     }
 
-    let mut color_info = BITMAPINFO::default();
-    color_info.bmiHeader = BITMAPINFOHEADER {
-        biSize: size_of::<BITMAPINFOHEADER>() as u32,
-        biWidth: width,
-        biHeight: -height,
-        biPlanes: 1,
-        biBitCount: 32,
-        biCompression: BI_RGB.0,
+    let mut color_info = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: width,
+            biHeight: -height,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let mut pixels = vec![0u8; (width * height * 4) as usize];
@@ -125,14 +127,16 @@ unsafe fn bitmap_to_image(
     if !mask.0.is_null() {
         mask_stride = (((width + 31) / 32) * 4) as usize;
         mask_bits.resize(mask_stride * height as usize, 0);
-        let mut mask_info = BITMAPINFO::default();
-        mask_info.bmiHeader = BITMAPINFOHEADER {
-            biSize: size_of::<BITMAPINFOHEADER>() as u32,
-            biWidth: width,
-            biHeight: -height,
-            biPlanes: 1,
-            biBitCount: 1,
-            biCompression: BI_RGB.0,
+        let mut mask_info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 1,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let _ = unsafe {
@@ -149,7 +153,7 @@ unsafe fn bitmap_to_image(
     }
     let _ = unsafe { ReleaseDC(None, hdc) };
 
-    let has_alpha = pixels.chunks_exact(4).any(|pixel| pixel[3] != 0);
+    let has_alpha = pixels.as_chunks::<4>().0.iter().any(|pixel| pixel[3] != 0);
     let mut buffer =
         slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(width as u32, height as u32);
     let target = buffer.make_mut_slice();
