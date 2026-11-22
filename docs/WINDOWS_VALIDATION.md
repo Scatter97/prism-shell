@@ -198,6 +198,8 @@ Use a VM or a debugger that can suspend `prism-shell.exe` without terminating it
   Control Center **Restore bar** action or `prism-recovery.exe --restore`.
 - Replacement mode does not redirect the Windows key by itself. Without Phase C enabled, pressing
   Win can still open the native Start surface; test the combination only after each part passes.
+- Sleep/resume may safely end replacement mode because the watchdog sees the paused heartbeat. Record
+  whether the taskbar returns after resume; Prism must not re-hide it automatically.
 - Explorer taskbar class names are undocumented internals and may change in future Windows builds.
 
 ## Phase C — standalone Windows key

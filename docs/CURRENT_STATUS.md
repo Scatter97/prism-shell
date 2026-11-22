@@ -187,6 +187,9 @@ runners, not Windows 11 desktops. A new CI run should be executed after push.
 - Replacement mode does not by itself redirect the native Windows key. Without Phase C, pressing Win
   can still open the native Start surface over the hidden taskbar. Enable both experiments only
   after each is validated independently.
+- Sleep/resume can make the watchdog treat the paused heartbeat as a failure and safely restore the
+  native taskbar, ending replacement mode. This is intentional fail-safe behavior; it must be
+  validated and may need a resume-aware heartbeat later.
 - The taskbar window class names and the hide/show method are observed Explorer internals, not a
   Microsoft compatibility contract. Future Windows builds may change them.
 - The Windows-key hook is a global low-level hook. It is off by default, only runs while Prism is
