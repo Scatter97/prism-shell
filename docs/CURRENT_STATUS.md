@@ -184,6 +184,9 @@ runners, not Windows 11 desktops. A new CI run should be executed after push.
 - The notification area and third-party tray icons are not replicated. While the native taskbar is
   hidden, the documented fallback is the Control Center "Restore bar" action or
   `prism-recovery.exe --restore`.
+- Replacement mode does not by itself redirect the native Windows key. Without Phase C, pressing Win
+  can still open the native Start surface over the hidden taskbar. Enable both experiments only
+  after each is validated independently.
 - The taskbar window class names and the hide/show method are observed Explorer internals, not a
   Microsoft compatibility contract. Future Windows builds may change them.
 - The Windows-key hook is a global low-level hook. It is off by default, only runs while Prism is

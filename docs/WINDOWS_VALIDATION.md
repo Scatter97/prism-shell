@@ -196,6 +196,8 @@ Use a VM or a debugger that can suspend `prism-shell.exe` without terminating it
   There is no AppBar reservation.
 - The native notification area/tray is not replicated. While hidden, the recovery path is the
   Control Center **Restore bar** action or `prism-recovery.exe --restore`.
+- Replacement mode does not redirect the Windows key by itself. Without Phase C enabled, pressing
+  Win can still open the native Start surface; test the combination only after each part passes.
 - Explorer taskbar class names are undocumented internals and may change in future Windows builds.
 
 ## Phase C — standalone Windows key
