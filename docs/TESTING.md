@@ -1,12 +1,11 @@
 # Testing — Prism Shell
 
 Status: portable unit tests, Linux visual tests, virtual-display interaction tests, Windows MSVC
-cross-builds, and a native `windows-latest` compile/test run were executed. One Windows 11 startup
-attempt failed before any Prism surface appeared; commit `3936efd` fixes the HWND timing, passed
-native Windows CI build/tests, but has not been re-tested on a Windows 11 desktop. No Windows
-desktop runtime behavior is validated.
+cross-builds, and native `windows-latest` compile/test runs were executed. Basic Windows 11
+taskbar/icons/activation/coexistence is owner-confirmed. Live DWM previews, the taskbar recovery
+watchdog, taskbar replacement, and the standalone Windows-key hook are not yet runtime-validated.
 
-Last update: 2026-11-21.
+Last update: 2026-11-22.
 
 ## 1. Test layers
 
@@ -16,11 +15,12 @@ Last update: 2026-11-21.
 | Mock platform | Deterministic snapshots, pending/error reconciliation, media transitions, scenario integrity | `prism-platform` tests |
 | View mapping | Icon/copy mapping, launcher filtering, durations, audio default | `prism-ui/src/model.rs` tests |
 | App support | CLI parsing, config fallback, screenshot path validation, toggle-id parsing | `prism-app` tests |
-| Windows geometry/identity | DPI physical rects, panel clamping, executable normalization, friendly names, window eligibility, grouping | `prism-windows` portable tests |
+| Windows geometry/identity | DPI physical rects, panel/preview clamping, thumbnail cropping, executable normalization, friendly names, window eligibility, grouping | `prism-windows` portable tests |
+| Windows keyboard/recovery logic | Standalone Win tap vs combination, auto-repeat/injected input, fallback hotkey parsing, marker round-trip, recovery CLI | `prism-windows` portable tests |
 | Visual | Layout, typography, spacing, overflow, DPI behavior, state presentation | Xvfb screenshots + manual review |
 | Interaction | Real pointer/keyboard state transitions | `xdotool` against Xvfb |
 | Windows compile | MSVC target, link, PE output, static CRT | `cargo xwin` + `windows-latest` CI |
-| Windows runtime | HWND styles, DWM alpha, focus/z-order, Explorer coexistence, activation, recovery | **Attempted once; startup failed; fix pending re-test** |
+| Windows runtime | HWND styles, DWM alpha/thumbnails, focus/z-order, Explorer coexistence, activation, previews, recovery, Windows key | **Basic taskbar/icons/activation/coexistence owner-confirmed; new phases unverified** |
 
 ## 2. Commands and results
 
@@ -35,39 +35,40 @@ cargo xwin build --release --target x86_64-pc-windows-msvc -p prism-app --bins
 Executed results:
 
 - **Formatting:** `cargo fmt --all -- --check` passed.
-- **Tests:** 72 passed, 0 failed, 0 ignored:
-  - `prism-core`: 28
+- **Tests:** 92 passed, 0 failed, 0 ignored:
+  - `prism-core`: 29
   - `prism-platform`: 9
-  - `prism-app`: 13
+  - `prism-app`: 16
   - `prism-ui`: 4
-  - `prism-windows`: 18 portable tests (layout, naming, eligibility, grouping)
+  - `prism-windows`: 34 portable tests (layout/previews, keyboard state/hotkeys, recovery marker/
+    CLI, naming, eligibility, grouping)
   - binaries/doc tests: 0
-- **Clippy:** `cargo clippy --workspace --all-targets` completed with no warnings or errors after
-  cleanup.
+- **Clippy:** `cargo clippy --workspace --all-targets` completed with no warnings or errors.
+- **Windows-target Clippy:** `cargo xwin clippy --target x86_64-pc-windows-msvc --workspace
+  --all-targets` completed with no warnings after cleanup.
 - **Windows debug cross-build:** `cargo xwin build --target x86_64-pc-windows-msvc -p prism-app
-  --bins` produced `prism-shell.exe` and `prism-preview.exe` (PE32+ x86-64). Static CRT link
-  succeeded; the import table has no VC runtime DLL. The only noise is benign `LNK4099` warnings
-  from debug CRT PDB references in the xwin SDK.
+  --bins` produced `prism-shell.exe`, `prism-recovery.exe`, and `prism-preview.exe` (PE32+ x86-64).
+  Static CRT link succeeded; the import table has no VC runtime DLL. The only noise is benign
+  `LNK4099` warnings from debug CRT PDB references in the xwin SDK.
 - **Windows release cross-build:** `cargo xwin build --release --target
-  x86_64-pc-windows-msvc -p prism-app --bins` produced a 14 MB GUI-subsystem `prism-shell.exe` and
-  a 15 MB `prism-preview.exe`, with no VC runtime import. This proves the toolchain/link path only.
-- **Windows runtime:** one startup attempt on Windows 11 failed before any surface appeared with
-  `window handle unavailable: the underlying handle cannot be represented using the types in this
-  crate`. Slint/winit creates the HWND asynchronously; the old code requested it immediately after
-  `show()`. Commit `3936efd` resolves the HWND on the first event-loop tick with a 5-second timeout.
-  The fix is cross-compiled, passed native `windows-latest` CI build/tests (run 44985985957), but
-  has **not** been re-run on Windows 11. No `Tested on Windows` runtime label applies to any feature
-  yet.
-- **Native Windows CI:** two runs passed:
+  x86_64-pc-windows-msvc -p prism-app --bins` produced a 14.5 MB GUI `prism-shell.exe`, a 325 KB
+  console `prism-recovery.exe`, and a 14.8 MB console mock `prism-preview.exe`, with no VC runtime
+  import. This proves the toolchain/link path only.
+- **Windows runtime:** the owner confirmed basic taskbar rendering, native icons, click activation,
+  and coexistence with the original taskbar on Windows 11. Live previews, replacement/recovery, and
+  Windows-key interception are **not yet runtime-validated**; use `WINDOWS_VALIDATION.md`.
+- **Native Windows CI:** two runs passed on the previous baseline:
   - [44983452807](https://github.com/Scatter97/prism-shell/actions/runs/44983452807) for `25668a9`:
     Linux 9m55s, Windows 14m31s.
   - [44985985957](https://github.com/Scatter97/prism-shell/actions/runs/44985985957) for the HWND
     fix `3936efd`: Linux 15m14s, Windows 19m42s.
-  - Both Windows jobs ran format, Clippy, 72 tests, and debug executables.
+  - Both Windows jobs ran format, Clippy, the then-current 72 tests, and debug executables.
   - The runs have one non-blocking annotation: `actions/checkout@v4` is being moved from Node 20 to
     Node 24 by GitHub.
   - These are hosted Windows Server runners, not Windows 11 desktops; they do not validate DWM,
-    Explorer, focus, transparency, or the taskbar overlay.
+    Explorer, focus, transparency, thumbnails, recovery, or the taskbar overlay.
+  - This milestone has not been pushed, so no new CI run is claimed. The local Windows-target
+    Clippy/build results above are compile evidence only.
 - **CI configuration:** `.github/workflows/ci.yml` now cancels superseded runs on the same ref and
   ignores Markdown-only pushes. The runtime checklist is still the only Windows desktop test.
 - **Automated UI snapshot matrix:** `scripts/test/ui-snapshots.sh` generated 14 UI-only PNGs at
@@ -110,13 +111,20 @@ copy/mapping/filtering.
 - Taskbar window/dock physical geometry at 100% and 150%, including the 14 px bottom gap.
 - Control Center right alignment, launcher left alignment, and panel gaps.
 - Work-area clamping for small screens and negative-origin monitors.
-- Shadow-margin inflation and the shared Slint dock-width formula.
+- Shadow-margin inflation/deflation and the shared Slint dock-width formula.
+- Preview panel growth/clamping, app-slot anchoring, thumbnail/card alignment, DPI scaling, and
+  center-crop aspect math.
 - Executable path normalization, friendly names, and pinned-app matching.
 - Window eligibility (tool/owned/cloaked/zero-size/minimized), UWP-host separation, and grouping
   by normalized executable.
 - `DockState::record_window_discovered` adding/merging tracked windows.
+- Standalone Windows-key tap vs every tested combination, modifier-only combinations, auto-repeat,
+  both Windows keys, injected events, orphan key-up, and fallback-hotkey parsing.
+- Taskbar recovery marker round-trip, malformed markers, original visibility preservation, and
+  recovery CLI validation.
 
-The Win32 modules themselves are only compile-checked. They have no Windows unit tests yet.
+The Win32 modules themselves are only compile-checked. They have no Windows unit tests yet. DWM
+thumbnail hosting, the watchdog process, and the low-level hook cannot be tested on Linux.
 
 ## 4. Linux visual and interaction tests
 
@@ -199,23 +207,24 @@ so images vary by capture time. `--scale 1` is required for a 1:1 logical PNG.
 
 Do not claim these as complete:
 
-- Windows 11 desktop runtime for anything in `prism-shell.exe`: window creation, HWND styles, DWM
-  alpha, frameless/transparent appearance, focus/z-order, non-activating taskbar, click-through.
-  One startup attempt reached this path and failed before the UI; the fix is pending re-test.
-- Interactive execution on a Windows 11 desktop; the `windows-latest` run only compiles/links and
-  runs portable unit tests on a server image.
-- Win32 `EnumWindows`/`SetWinEventHook` behavior, AUMID/UWP identity, icon extraction,
-  activation/minimization, elevated/UIPI targets.
-- Explorer/taskbar coexistence, process-death recovery, lock/sleep/resume, Explorer restart.
-- Taskbar hiding/restoration (deliberately not implemented).
-- Primary-monitor positioning at real 100/125/150/200% DPI, mixed-DPI, hotplug, RDP.
+- Windows 11 desktop runtime for DWM live thumbnails, preview hover handoff, preview activation,
+  minimized/destroyed/fullscreen preview behavior, or preview DPI/edge clamping.
+- Taskbar replacement hiding/restoration, watchdog timeout after forced kill/suspend, Explorer
+  restart, secondary taskbars, or replacement-mode work-area behavior.
+- Standalone Windows-key interception and native shortcut preservation with synthetic replay,
+  elevated apps, fullscreen apps, or hook cleanup under kill/crash.
+- Full Control Center interactions; basic launcher/CC presence is owner-confirmed only.
+- Win32 `EnumWindows`/`SetWinEventHook` edge cases across the full app matrix, AUMID/UWP identity,
+  icon extraction failures, elevated/UIPI targets.
+- Lock/sleep/resume, Explorer restart in default mode, monitor hotplug, RDP.
+- Primary-monitor positioning at real 100/125/150/200% DPI, mixed-DPI, multi-monitor.
 - Core Audio, default-device changes, radio/Wi-Fi/BT toggles, location consent.
 - Brightness WMI/DDC-CI and monitor safety.
 - GSMTC media sessions in an unpackaged binary.
 - Tray replication and notification interception (deferred/blocked).
 - Narrator/AccessKit verification; full keyboard tab navigation; high-contrast mode.
 - Performance baselines, memory/GPU measurements, 8-hour soak, 100+ windows.
-- Installer, auto-start, update/recovery executable, code signing, single-instance guard.
+- Installer, auto-start, code signing, single-instance guard, distribution license.
 
 ## 6. Windows 11 validation plan
 
@@ -231,9 +240,11 @@ x64 VM, normal user, Explorer as the normal shell, single monitor at 100%, then:
 5. Verify Control Center focus-loss/Escape close, real battery/Settings/lock/exit, and no fake
    unsupported controls.
 6. Test 100/125/150/200%, monitor changes, lock/sleep/resume, Explorer restart, and Prism kill.
-7. Only after those pass: consider AppBar work-area reservation, multi-monitor surfaces,
-   Core Audio, radios/WLAN, brightness, GSMTC, thumbnails, tray, and a recovery executable. Each
-   subsystem needs its own API research and explicit approval.
+7. Run Phase A preview checks, then the Phase B recovery gate on a disposable VM, then the Phase C
+   Windows-key shortcut matrix.
+8. Only after those pass: consider AppBar work-area reservation, multi-monitor surfaces,
+   Core Audio, radios/WLAN, brightness, GSMTC, and tray. Each subsystem needs its own API research
+   and explicit approval.
 
 ## 7. Reproducibility
 

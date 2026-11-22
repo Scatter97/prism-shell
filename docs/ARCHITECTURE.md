@@ -1,11 +1,12 @@
 # Prism Shell — Architecture
 
-Status: Phase 1 foundation, Phase 2 visual prototype, and Phase 3A native Windows host are
-**Implemented**. Phase 1/2 are **Tested on Linux**; the Windows host is **successfully
-cross-compiled** and passed native CI compile/tests. One Windows 11 launch was attempted and failed
-before the UI appeared because the HWND was requested before winit created it. Commit `3936efd`
-defers attachment to the first event-loop tick; re-test is pending. All Windows runtime behavior
-remains **Unverified**.
+Status: Phase 1 foundation, Phase 2 visual prototype, Phase 3A native Windows host, Phase A live
+window previews, Phase B taskbar recovery/replacement, and Phase C Windows-key integration are
+**Implemented** and **successfully cross-compiled**. Phase 1/2 and the portable tests are **Tested
+on Linux**. The owner has confirmed the basic Windows 11 taskbar, native icons, click activation,
+and coexistence with the original taskbar. The new preview, taskbar-replacement, and Windows-key
+paths have **not** been runtime-validated on Windows 11; taskbar replacement is disabled by default
+and blocked for enablement until its independent recovery mechanism is tested on real Windows.
 
 The design goal is a native, low-footprint Windows 11 shell with one coherent visual system. The
 architecture keeps presentation, application state, platform integration, and recovery separate so
@@ -32,8 +33,8 @@ the Windows host can be validated without rewriting the UI.
 │  │ layout, clock │   │ WindowsPlatform (prism-windows, real Win32)  │    │
 │  └───────────────┘   └───────────────────────────────────────────────┘    │
 │                                                                            │
-│  prism-windows: HWND host, DWM, EnumWindows/WinEventHook, shell icons,    │
-│  activation, battery/clock. Future: audio/radio/media, recovery tool.     │
+│  prism-windows: HWND host, DWM thumbnails, EnumWindows/WinEventHook,      │
+│  icons, activation, battery/clock, keyboard hook, taskbar recovery.       │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -73,8 +74,8 @@ contract for both the preview and the future Windows backend.
 `WindowsPlatform` lives in `prism-windows` (not `prism-platform`) because it needs the Win32 host:
 `ShellExecuteExW` launch, `ShowWindow`/`SetForegroundWindow` activation, `LockWorkStation`, native
 Settings URIs, and `GetSystemPowerStatus`. It reports audio, radios, brightness, and media as
-unavailable rather than simulating them. It has only run during one failed Windows startup attempt;
-no system-control action has been validated.
+unavailable rather than simulating them. The owner has confirmed basic dock launch/activation;
+individual Control Center actions still need the validation checklist.
 
 ### `prism-ui`
 
@@ -85,9 +86,13 @@ no system-control action has been validated.
 - `state.slint`: the `UiState` global (models, view values, semantic callbacks). Each top-level
   production surface owns its own instance; the native controller writes the taskbar, Control
   Center, and launcher instances separately.
-- `shell-taskbar.slint`, `shell-control-center.slint`, `shell-launcher.slint`: production
-  top-level windows. They reuse the same taskbar/CC/launcher components and design tokens as the
-  preview stage but have transparent backgrounds and no simulated desktop.
+- `shell-taskbar.slint`, `shell-control-center.slint`, `shell-launcher.slint`,
+  `shell-window-preview.slint`: production top-level windows. They reuse the same taskbar/CC/
+  launcher/preview components and design tokens as the preview stage but have transparent
+  backgrounds and no simulated desktop.
+- Window cards carry a real icon slot and a `preview-live-thumbnails` mode. In production the
+  designed miniature is hidden and DWM draws live content over a neutral inset; the mock preview
+  keeps the designed miniature.
 - `model.rs`: deterministic domain-to-view mapping (app items, toggle copy, audio outputs,
   window items, icons, time formatting). `AppItem.has-icon`/`icon` carry real Windows icons;
   the SVGs are only the fallback.
@@ -121,17 +126,27 @@ the Win32 modules are `#[cfg(windows)]`:
 - `window`: `EnumWindows` filtering (own process, invisible, cloaked, shell classes, tool/owned
   windows, zero-size), process path/identity, icon source, minimized/foreground facts.
 - `icons`: `SHGetFileInfoW` → `HICON` → RGBA → `slint::Image`, cached per app.
+- `preview`: DWM live thumbnails registered against the preview Slint HWND. Source-size query,
+  aspect-ratio crop, destination-rect updates, and unregister-on-drop/close. Minimized and invalid
+  HWNDs are skipped. Thumbnails are registered after the panel fade.
 - `platform`: real launch/activate/minimize, Settings URIs, workstation lock, power status. No mock
   fallback.
-- `controller`: native event loop, three Slint surfaces, `SetWinEventHook` invalidation, bounded
-  5 s reconciliation, 300 ms timer, layout updates.
+- `taskbar_replacement`: opt-in hide/show of `Shell_TrayWnd`/`Shell_SecondaryTrayWnd`, marker file,
+  heartbeat, watchdog spawn, manual restore, and `prism-recovery.exe` CLI. Disabled by default.
+- `keyboard`: portable standalone-Windows-key state machine plus fallback-hotkey parser. The Win32
+  hook injects a synthetic Windows key-down only when a combination is detected; standalone
+  key-down/up are swallowed and toggle the launcher.
+- `controller`: native event loop, four Slint surfaces, `SetWinEventHook` invalidation, preview
+  hover generations and native mouse-leave tracking, bounded 5 s reconciliation, 300 ms timer,
+  opt-in 50 ms shortcut timer, layout updates.
 
 Not yet implemented: AUMID extraction for packaged apps, worker-thread device APIs, Core Audio,
-radios, brightness, GSMTC, tray/notifications, thumbnails, and an independent recovery executable.
+radios, brightness, GSMTC, tray/notifications, AppBar work-area reservation, and multi-monitor dock
+instances.
 
 Cross-compilation proves the API surface links. It does not prove HWND style changes, DWM
-composition, foreground activation, or enumeration behavior on Windows; see
-`docs/WINDOWS_VALIDATION.md`.
+composition, thumbnail hosting, foreground activation, recovery timing, or keyboard-hook behavior
+on Windows; see `docs/WINDOWS_VALIDATION.md`.
 
 ## 3. Data and control flow
 
@@ -159,8 +174,18 @@ Key rules:
 - Hover previews are opened by a single-shot timer after pointer entry, aligned to the icon's
   known slot. Clicking an app suppresses re-opening for 650 ms so a minimize is not immediately
   undone by the hover timer.
-- The preview is development-only. Every overlay is hidden from hit-testing when closed and
-  waits for its close animation before becoming invisible.
+- Every hover/scheduled open carries a generation. Rapid target changes invalidate older timers,
+  and close timers are generation-checked. The Linux mock and Windows backend share the same
+  semantic callbacks; only the Windows controller registers DWM thumbnails.
+- The Linux mock preview's thumbnails are designed placeholders. On Windows, the Slint preview
+  surface is the DWM destination: the controller maps each card to a physical destination rect,
+  registers one thumbnail per visible non-minimized HWND, and unregisters on close/window loss.
+  DWM draws above Slint content, so close buttons sit outside the thumbnail rectangles.
+- The preview stays open while the pointer travels from the dock into the panel. On Windows a
+  native `WM_MOUSEMOVE`/`WM_MOUSELEAVE` flag is authoritative because card TouchAreas are above
+  the root hover area.
+- Every overlay is hidden from hit-testing when closed and waits for its close animation before
+  becoming invisible.
 
 ### Threading (current)
 
@@ -170,6 +195,12 @@ Key rules:
   EVENT_SYSTEM_MINIMIZESTART/END)` only sets an atomic dirty flag. A 300 ms Slint timer refreshes
   the model when dirty; a full reconciliation also runs every 5 s. The clock updates only when the
   minute changes. No continuous render loop is used.
+- The low-level keyboard hook is installed on the UI thread and only performs a tiny state-machine
+  update plus, at most, one `SendInput` replay. A 50 ms timer polls the launcher flag only while
+  the opt-in shortcut integration is enabled.
+- The taskbar watchdog is a separate process. During replacement mode the UI thread pulses a named
+  auto-reset event on each 300 ms tick; the watchdog waits on that event and restores after 4 s of
+  silence. No recovery path depends on the Prism message loop.
 - Future Core Audio/WinRT/device calls must move to a worker and marshal results back with
   `slint::invoke_from_event_loop`. That is a contract in `SystemServices`, not yet implemented for
   those subsystems.
@@ -188,9 +219,10 @@ Separate top-level surfaces:
 
 1. **Taskbar** — always visible, bottom-centered, non-activating, no taskbar entry.
 2. **Control Center** — anchored above the right status region, dismisses on outside click/Escape.
-3. **Launcher** — anchored above the launcher button.
-4. **Window previews / tooltips** — short-lived, always-on-top, owned or no-activate surfaces.
-5. **Power confirmation** — deliberate destructive-action gate.
+3. **Launcher** — anchored above the launcher button, takes focus for search.
+4. **Window previews** — separate short-lived topmost non-activating window; the DWM destination
+   for live thumbnails. It is pre-created and click-through outside its visible panel.
+5. **Power confirmation** — deliberate destructive-action gate (preview/mock path).
 
 The Phase 3A host implements these as documented Win32/DWM calls on the HWND obtained from Slint:
 
@@ -207,12 +239,18 @@ The Phase 3A host implements these as documented Win32/DWM calls on the HWND obt
   sets `DWMWCP_DONOTROUND`, `DWMWA_USE_IMMERSIVE_DARK_MODE`, and `DWMWA_BORDER_COLOR =
   DWMWA_COLOR_NONE`; Slint draws the rounded material. `WS_EX_LAYERED` is not used.
 - `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE|SWP_FRAMECHANGED)` positions the taskbar; panels use
-  `SWP_SHOWWINDOW` and an explicit `SetForegroundWindow` because they need focus.
+  `SWP_SHOWWINDOW` and an explicit `SetForegroundWindow` because they need focus. The preview uses
+  the no-activate path and is pre-created so its first hover does not create a focus-stealing HWND.
 - The host polls the primary work area and window DPI on each 300 ms tick and repositions after a
   scale/work-area change. `WM_DPICHANGED` is not handled explicitly.
+- Experimental taskbar replacement uses the full primary-monitor rectangle instead of `rcWork`,
+  because hiding `Shell_TrayWnd` does not change the Windows work area. The dock keeps a 14 logical
+  pixel bottom gap.
 
-Win32 style changes after winit creates the window, DWM alpha with the FemtoVG/OpenGL renderer, and
-foreground permission from a NOACTIVATE taskbar are **unverified** until run on Windows 11.
+The owner has confirmed the basic taskbar rendering, icon extraction, click activation, and
+coexistence with the original taskbar. DWM live-thumbnail composition on the transparent preview
+destination, preview focus handoff, and the full foreground-permission matrix (elevated/UIPI,
+fullscreen) remain **unverified**.
 
 The production host keeps a solid translucent panel as the visual baseline; no DWM backdrop is
 required for readability.
@@ -243,7 +281,7 @@ required for readability.
 
 ## 6. Recovery and safety
 
-V1 preview and native shell introduce **no** shell modifications:
+Default behavior still makes **no** shell modifications:
 
 - No Explorer replacement or termination.
 - No system-shell registration.
@@ -253,14 +291,31 @@ V1 preview and native shell introduce **no** shell modifications:
 - No process injection, DLL injection, or Explorer patching.
 - No system binary modification.
 
-`prism-shell` on Windows now runs a real overlay shell but still makes **no** shell
-modifications. Deeper integration remains future and requires:
+The new experimental taskbar-replacement path is opt-in and gated by an independent recovery tool:
 
-1. An independent recovery executable with no dependency on the running shell.
-2. A watchdog/restore marker that can restore the taskbar after a crash.
-3. Validated hide/show on primary and secondary taskbars, Explorer restart, reboot, and crash.
-4. Opt-in only; never automatic; never the default V1 behavior.
-5. VM testing before physical hardware.
+1. `prism-recovery.exe` is a separate process. It opens the shell's named heartbeat event and is
+   not linked to the shell's UI, event loop, or main thread.
+2. The shell writes a marker before hiding, recording every native taskbar HWND and its original
+   visibility. The watchdog does nothing without this marker.
+3. If Prism exits, is force-terminated, or stops pulsing the heartbeat for 4 seconds, the watchdog
+   calls `ShowWindow(SW_SHOW)` on the recorded primary/secondary taskbars. If Explorer recreated
+   the taskbar with new HWNDs, it shows the current primary and, when needed, all current
+   secondaries.
+4. A clean exit, the Control Center **Restore bar** action, and a startup stale-marker check all
+   restore the taskbar through the same path. `prism-recovery.exe --restore` is an emergency
+   manual action that does not require Prism.
+5. The shell leaves replacement mode voluntarily if Explorer's taskbar becomes visible again; it
+   never re-hides in a loop.
+6. The feature is off by default and **must not be enabled** until the recovery gate in
+   `docs/WINDOWS_VALIDATION.md` passes on real Windows 11.
+
+Remaining prerequisites before calling replacement production-ready:
+
+- Recovery tested on primary and secondary taskbars, Explorer restart, reboot, forced kill, and a
+  frozen heartbeat.
+- Work-area/tray/fullscreen behavior documented and accepted.
+- A decision on whether to keep the undocumented class-name approach or abandon it if a Windows
+  update changes behavior.
 
 ## 7. Configuration, diagnostics, privacy
 
@@ -269,8 +324,12 @@ modifications. Deeper integration remains future and requires:
 - Missing config uses defaults. Corrupt/invalid config falls back safely, logs a warning, and
   shows a non-blocking error toast in the preview. The file is never overwritten.
 - Logs go to stderr and `$XDG_STATE_HOME/prism-shell/logs/prism-preview.log` (Linux) or
-  `%LOCALAPPDATA%\Prism\logs\prism-shell.log` (Windows native shell). Do not log window titles,
-  SSIDs, media metadata, or secrets. The native controller logs window counts and ids, not titles.
+  `%LOCALAPPDATA%\Prism\logs\prism-shell.log` (Windows native shell). The recovery watchdog appends
+  to `%LOCALAPPDATA%\Prism\logs\prism-recovery.log`. Do not log window titles, SSIDs, media
+  metadata, or secrets. The native controller logs window counts and IDs, not titles.
+- The experimental taskbar marker lives at
+  `%LOCALAPPDATA%\Prism\taskbar-replacement.state`. It contains only taskbar HWNDs and original
+  visibility, never window titles or application data.
 - The product works offline. There is no telemetry or network dependency.
 - Mock data is deterministic and fictional. The preview visibly labels itself development-only.
 
@@ -279,10 +338,14 @@ modifications. Deeper integration remains future and requires:
 - Slint's dependency-driven property system avoids idle repaints. The preview has one 1 s timer
   for the clock/media and single-shot timers for interaction states. The native shell has a 300 ms
   timer that only refreshes when an event flag is set or the 5 s reconciliation is due.
+- The opt-in shortcut timer runs at 50 ms only when Windows-key integration is enabled. The
+  taskbar heartbeat is one `SetEvent` per 300 ms tick while replacement mode is active. DWM
+  thumbnails are registered once per preview and only updated when geometry changes.
 - Icons/fonts are embedded; no runtime asset I/O.
 - No Windows performance baseline exists. Measure cold start, idle CPU/GPU, RSS, first frame,
-  Control Center open latency, and behavior with many windows before making performance claims.
-  Window enumeration/icon extraction currently run synchronously on the UI thread.
+  Control Center open latency, preview hover/open latency, and behavior with many windows before
+  making performance claims. Window enumeration/icon extraction currently run synchronously on the
+  UI thread.
 - The `release` profile uses thin LTO, one codegen unit, symbol stripping, and abort-on-panic.
   These are not performance measurements.
 
@@ -304,7 +367,11 @@ modifications. Deeper integration remains future and requires:
 | Win32 style changes after winit creation are ignored or reset | High | Reapply styles on layout and on panel creation; verify extended styles at runtime |
 | Polling misses fast window changes or costs idle CPU | Medium | WinEventHook dirty flag + 5 s reconciliation; measure idle CPU on Windows |
 | UWP app identity/grouping is wrong | High | AUMID-first, exe fallback, child PID heuristic; UWP matrix |
-| Taskbar hiding is unsafe/undocumented | Critical | Not implemented; independent recovery + explicit approval required |
+| DWM thumbnails fail on the transparent Slint destination | High | Neutral placeholder fallback; test on Windows 11 with the actual renderer |
+| Preview hover handoff/activation is unreliable | Medium | Native mouse tracking, generation-guarded timers, click activates the exact HWND |
+| Taskbar hiding is unsafe/undocumented | Critical | Opt-in only; independent watchdog + marker; disabled until real Windows recovery passes |
+| Watchdog misses a frozen shell | Critical | 4 s heartbeat timeout; forced-kill and suspend tests are mandatory before enablement |
+| Windows-key hook breaks a native shortcut | High | Swallow only standalone taps; synthetic replay for combinations; fallback hotkey; full matrix test |
 | Tray/notification interception expectations | High | Defer/block; own icons only; state limitations in UI/docs |
 | DDC/CI brightness can misbehave | High | No startup probe; opt-in; hide/disable; settings fallback |
 | Mixed-DPI geometry is wrong | Medium | PerMonitorV2, one surface per monitor, physical math, matrix test |

@@ -71,7 +71,8 @@ not available" message and exited. Phase 3A replaces that entry point with the r
 
 ## D-006 — No taskbar hiding, no Explorer modification, no auto-start in V1
 
-**Status: Approved; Implemented as a prohibition. Deferred/Blocked for future work.**
+**Status: Default prohibition remains Approved. Superseded only for the opt-in experimental path in
+D-023; that path is Implemented but Blocked for enablement until real Windows recovery validation.**
 
 Do not call `ShowWindow` on `Shell_TrayWnd`, modify `StuckRects3`, replace Explorer, register a
 shell, or add auto-start. The taskbar window classes are undocumented Explorer internals and a
@@ -224,4 +225,76 @@ recovery prerequisites in D-006 and real Windows validation first.
 
 This keeps the shell useful and safe without implying that an overlay is a complete taskbar
 replacement. Portable layout/filtering modules are unit-tested on Linux; Win32 behavior is not.
+
+## D-022 — Live previews use DWM thumbnails on a dedicated Slint surface
+
+**Status: Implemented; cross-compiled; portable geometry tested. Windows runtime Unverified.**
+
+Use `DwmRegisterThumbnail`/`DwmUpdateThumbnailProperties` against the HWND of a dedicated
+`ShellWindowPreview` Slint window. The Slint cards draw the surface, icon, title, and controls;
+DWM draws the live source content over an inset card rectangle. Crop the source with
+`DwmQueryThumbnailSourceSize` rather than stretching it. Unregister every thumbnail on close, app
+switch, source destruction, and shutdown.
+
+**Why not screen capture or Windows.Graphics.Capture?** DWM thumbnails are compositor-native,
+cheap, do not require per-frame capture, and do not need a user consent picker. They also work for
+occluded windows without a capture loop. **Rejected:** `PrintWindow`/GDI capture (UI-thread cost,
+blank frames, privacy copies), WGC (picker/consent, heavier), and a fake persistent screenshot
+(misrepresents live state).
+
+**Constraints:** DWM thumbnails are rectangular and cannot be rounded; minimize/skip cases; the
+destination HWND must be a real top-level window and the transparent-win32 behavior must be tested.
+Minimized windows keep their card/restore action but no live thumbnail. Close buttons are placed
+outside the thumbnail rectangles because DWM draws above Slint content.
+
+## D-023 — Taskbar replacement is opt-in, watchdog-backed, and currently blocked
+
+**Status: Implemented; cross-compiled; portable marker tests. Windows recovery Unverified. Do not
+enable on a daily-driver machine.**
+
+Default Prism remains an overlay alongside Explorer. The experimental mode uses only
+`ShowWindow(SW_HIDE/SW_SHOW)` on the observed `Shell_TrayWnd`/`Shell_SecondaryTrayWnd` classes.
+Explorer stays alive; no registry, shell registration, injection, patches, or auto-start.
+
+Recovery is independent by construction:
+
+- `prism-recovery.exe` watches a named heartbeat event. A crash, force-termination, or freeze
+  stops the heartbeat and restores after 4 s.
+- A marker written before hiding records each taskbar HWND and original visibility. Without an
+  active marker the watchdog does nothing.
+- Startup checks for a stale marker; clean exit, **Restore bar**, and manual `--restore` use the
+  same restore path.
+- The shell leaves replacement mode if Explorer recreates a visible taskbar; it never fights.
+
+**Why this shape?** A crash while the native taskbar is hidden can strand a non-technical user.
+The watchdog must not depend on the shell's event loop, and hiding must never be the default.
+Registry `StuckRects` edits were rejected as persistent and harder to recover. AppBar reservation is
+not a taskbar replacement and remains deferred.
+
+**Gate:** the recovery gate in `docs/WINDOWS_VALIDATION.md` must pass on a disposable Windows 11
+VM before enabling this on the owner's machine. If it fails, keep the code behind the default-off
+gate and report the blocker rather than weakening the recovery path.
+
+## D-024 — Windows-key integration via low-level hook with synthetic combination replay
+
+**Status: Implemented; cross-compiled; portable state tests. Windows runtime Unverified. Off by
+default.**
+
+Use `WH_KEYBOARD_LL` because `RegisterHotKey` cannot represent a bare Windows-key tap. Do not
+swallow all Windows-key input:
+
+- Swallow a physical Windows key-down so the shell never receives a standalone tap.
+- If another key is pressed while it is held, inject one synthetic Windows key-down before passing
+  that key, preserving native combinations.
+- Swallow the standalone key-up and toggle the Prism launcher. No OS modifier state was set, so
+  nothing is left stuck.
+- Never suppress injected input; ignore it in the state machine.
+- Remove the hook on clean shutdown; Windows removes it on process death.
+- Provide a configurable fallback hotkey (default `Ctrl+Alt+Space`) and register it automatically
+  if the hook cannot be installed.
+
+**Rejected:** swallowing key-up only (risk of stuck Windows modifier state), suppressing every
+Windows-key event and re-synthesizing all shortcuts (larger compatibility surface), and
+`RegisterHotKey` alone (cannot detect a standalone tap). The synthetic-replay path still needs the
+full shortcut/elevated/fullscreen matrix on Windows 11 before being considered validated.
 

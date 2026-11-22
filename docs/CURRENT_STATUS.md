@@ -7,155 +7,199 @@ Last updated: 2026-11-22. Target: Windows 11 x64. Development host: Linux.
 | Milestone | Status | Evidence |
 |---|---|---|
 | Phase 0 — research/feasibility | **Research complete** | `docs/research/windows-api-notes.md`, `docs/WINDOWS_API_RESEARCH.md`, `docs/UI_FRAMEWORK_EVALUATION.md` |
-| Phase 1 — native foundation | **Implemented; Tested on Linux** | workspace, 72 portable tests, config/logging, platform traits |
-| Phase 2 — taskbar + Control Center preview | **Implemented; Tested on Linux** | interactive Slint mock preview, responsive/DPI screenshots |
-| Phase 3A — native Windows shell host | **Implemented; successfully cross-compiled; native CI build/test passed** | `prism-windows` crate, Win32/DWM host, taskbar/CC/launcher surfaces |
-| Phase 3A — real window tracking | **Implemented; successfully cross-compiled; native CI build/test passed** | `EnumWindows`, icon extraction, foreground events, activation |
-| Phase 3A — Windows CI compile/test | **Executed on `windows-latest`** | Runs 44983452807 and 44985985957: fmt, clippy, 72 tests, debug binaries |
-| Phase 3A — first Windows 11 launch | **Failed at startup; fix pending re-test** | `window handle unavailable` before any surface appeared; fix `3936efd` |
-| Phase 3A — Windows runtime validation | **Attempted once; not passed** | startup only; no window, rendering, focus, or activation test completed |
-| Taskbar hiding / Explorer replacement | **Not implemented; blocked** | deliberate safety boundary |
+| Phase 1 — native foundation | **Implemented; Tested on Linux** | workspace, 92 workspace tests, config/logging, platform traits |
+| Phase 2 — taskbar + Control Center preview | **Implemented; Tested on Linux** | interactive Slint mock preview, 14 automated screenshots |
+| Phase 3A — native Windows shell host | **Implemented; cross-compiled; owner-confirmed basic Windows 11 runtime** | `prism-windows` crate, Win32/DWM host, taskbar/CC/launcher surfaces |
+| Phase 3A — real window tracking | **Implemented; cross-compiled; owner-confirmed basic activation** | `EnumWindows`, icons, foreground events, activation |
+| Phase A — live window previews | **Implemented; cross-compiled; unit-tested; Windows runtime Unverified** | `prism-windows/src/preview.rs`, DWM thumbnail layout tests, new preview surface |
+| Phase B — independent taskbar recovery | **Implemented; cross-compiled; portable marker tests; Windows recovery Unverified** | `prism-recovery.exe`, watchdog heartbeat, marker file |
+| Phase B — native taskbar replacement | **Implemented behind a disabled experimental gate; Blocked for enablement** | `taskbar_replacement.rs`; do not enable until the recovery checklist passes on Windows 11 |
+| Phase C — standalone Windows-key launcher | **Implemented behind a disabled experimental gate; Windows runtime Unverified** | portable hook state machine, `WH_KEYBOARD_LL`, Ctrl+Alt+Space fallback |
 | Real system controls (audio/radios/brightness/media) | **Not implemented** | shown as unavailable or native Settings fallbacks |
 
-The Linux preview is functional. The Windows executable is a real native-limited shell. It has
-been launched once on Windows 11, where it failed before any surface appeared because the HWND was
-requested before winit created it. Commit `3936efd` defers HWND attachment to the first event-loop
-tick with a 5-second timeout. That fix is cross-compiled, unit-tested on Linux, and passed native
-`windows-latest` CI build/tests, but has **not** been re-tested on Windows; all Windows runtime
-behavior remains **Unverified**.
+The owner has confirmed on a real Windows 11 desktop that the floating Prism taskbar renders, native
+application icons appear, clicking dock icons switches real windows, and the original Windows
+taskbar remains visible beneath Prism. The launcher and Control Center are implemented, but not
+every interaction has been validated. This supersedes the earlier failed first-start report; the
+deferred-HWND fix (`3936efd`) is working in the owner's build.
 
-## Implemented and tested on Linux
+The new live-preview, taskbar-replacement, and Windows-key paths have **not** been runtime-tested on
+Windows 11 in this milestone. Cross-compilation, unit tests, and Linux visual tests are not Windows
+runtime evidence.
 
-- Portable workspace: `prism-core`, `prism-platform`, `prism-ui`, `prism-app`, `prism-windows` portable modules.
-- Dock/window model: grouping, pinned/running order, active state, MRU, launch/activate/minimize/restore/close intents, overflow.
-- Control state model: available/unsupported/permission-required/unavailable + idle/pending/failed reconciliation.
-- Linux mock preview:
-  - Floating taskbar, launcher, Control Center, window previews, tooltips, toasts, power confirmation.
-  - Laptop/Desktop/Minimal/Faults/ManyApps fixtures.
-  - Real local clock and deterministic screenshots.
-- Shared UI changes for the native path:
-  - Real image slot + generic fallback for application icons.
-  - Separate `ShellTaskbar`, `ShellControlCenter`, `ShellLauncher` top-level components.
-  - Production footer/labels and Exit-only utility mode; no fake power toggles.
-- 72 unit tests pass:
-  - `prism-core`: 28
-  - `prism-platform`: 9
-  - `prism-app`: 13
-  - `prism-ui`: 4
-  - `prism-windows`: 18 (portable layout, naming, eligibility, grouping)
+## This milestone
+
+### Phase A — real window previews
+
+Implemented a fourth production surface, `ShellWindowPreview`, and a DWM thumbnail manager:
+
+- Hovering a running dock icon for 300 ms opens a preview above the dock.
+- The preview shows real window content via `DwmRegisterThumbnail` /
+  `DwmUpdateThumbnailProperties`, plus the real application icon, window title, application name,
+  and a per-window close button.
+- Multiple windows are shown as separate cards; clicking a card activates that HWND.
+- DWM thumbnails are center-cropped to the card aspect ratio using `DwmQueryThumbnailSourceSize`.
+- Minimized windows keep their card and restore action but intentionally do not register a live
+  thumbnail; the card shows the existing "Minimized" state.
+- Destroyed windows are removed by the existing WinEventHook dirty/reconcile path, and their
+  thumbnails are unregistered.
+- The preview window is pre-created, frameless, topmost, non-activating, and click-through outside
+  its visible panel. Moving from the dock into the preview keeps it open; a native
+  `WM_MOUSEMOVE`/`WM_MOUSELEAVE` tracker is authoritative because card TouchAreas sit above the
+  Slint root hover area.
+- All DWM thumbnails are unregistered on close, app switch, hide, and shutdown. Thumbnails are
+  registered only after the 170 ms surface fade so they do not pop through a transparent panel.
+- The Linux mock preview still uses its designed thumbnails; the Windows backend sets
+  `preview-live-thumbnails` so the mock miniature is not shown behind real thumbnails.
+
+**Windows runtime risk:** DWM thumbnails against a transparent Slint/winit destination HWND are
+unverified. If the destination is layered or the renderer prevents DWM composition of thumbnails,
+the cards degrade to a neutral placeholder rather than fake content.
+
+### Phase B — safe experimental taskbar replacement
+
+Implemented but **disabled by default**:
+
+- `prism-recovery.exe` is a standalone console binary (325 KB release, only `KERNEL32`, `user32`,
+  `oleaut32`, `ntdll`, and a synchronous API-set import).
+- Before hiding anything, Prism starts the watchdog and creates a named auto-reset heartbeat.
+- `prism-recovery.exe --watch-parent <pid>` restores the taskbar if the heartbeat stops for 4
+  seconds (crash, force-termination, freeze) or the parent process exits.
+- A marker file at `%LOCALAPPDATA%\Prism\taskbar-replacement.state` records every native taskbar
+  HWND and whether it was originally visible. The watchdog does nothing without an active marker.
+- Prism also checks for a stale marker at startup and restores before creating any UI.
+- Hiding uses `ShowWindow(SW_HIDE)` on `Shell_TrayWnd` / `Shell_SecondaryTrayWnd` only.
+  Explorer is never terminated, replaced, injected, or registered as a shell; no registry or
+  startup settings are changed.
+- Visibility is verified after hiding. A partial failure restores every taskbar before returning.
+- In replacement mode the dock is positioned against the full primary monitor rectangle with the
+  existing 14 logical-pixel bottom gap, not the still-taskbar-reduced work area.
+- The Control Center shows a "Restore bar" action and documents that the recovery executable is the
+  independent fallback. Clean exit and "Restore bar" both show the native taskbar again.
+- If Explorer restarts or the taskbar becomes visible again, Prism leaves replacement mode rather
+  than fighting Explorer.
+- Manual recovery works without Prism: `prism-recovery.exe --restore` and `--status`.
+
+**Critical gate:** the independent recovery mechanism has **not** been exercised on a real Windows
+11 desktop. Taskbar replacement therefore must stay disabled until the recovery checklist in
+`docs/WINDOWS_VALIDATION.md` passes. Do not use `--experimental-taskbar-replacement` on the owner's
+machine yet.
+
+### Phase C — standalone Windows key
+
+Implemented but **disabled by default**:
+
+- A low-level keyboard hook (`WH_KEYBOARD_LL`) on the UI thread recognizes a standalone left or
+  right Windows key tap. A tap toggles the Prism launcher; a second tap closes it.
+- A physical Windows key-down is swallowed. If any other key is pressed while it is held, the hook
+  injects a synthetic Windows key-down before passing the combination, preserving `Win+E`,
+  `Win+R`, `Win+L`, `Win+D`, `Win+Tab`, `Win+Shift+S`, `Win+I`, `Win+X`, `Win+V`, arrows, and other
+  native shortcuts.
+- The standalone Windows key-up is swallowed, so no modifier state is left stuck and the native
+  Start menu does not receive a complete tap.
+- Auto-repeat, both Windows keys, injected input, modifier-only combinations, and orphan key-up
+  events have portable unit tests.
+- If the hook cannot be installed, Prism automatically registers a fallback hotkey. The default is
+  `Ctrl+Alt+Space`; `experimental.windows_key_fallback_shortcut` accepts `Ctrl`, `Alt`, `Shift`, and
+  `Win` plus letters, digits, `Space`, `Tab`, F1–F24, arrows, and common navigation keys.
+- The hook is removed on clean shutdown. Windows removes it automatically if Prism crashes.
+- The integration is not installed unless the config or explicit CLI flag enables it.
+
+**Windows runtime risk:** synthetic replay, elevated foreground apps, exclusive fullscreen,
+keyboard-layout edge cases, and Start-menu suppression are unverified. Secure-desktop shortcuts
+(such as Ctrl+Alt+Del) never reach the hook.
+
+## Verified on Linux
+
 - `cargo fmt --all -- --check` passed.
+- `cargo test --workspace`: **92 passed, 0 failed, 0 ignored**.
+  - `prism-core`: 29
+  - `prism-platform`: 9
+  - `prism-app`: 16
+  - `prism-ui`: 4
+  - `prism-windows`: 34 portable tests (layout, preview geometry/cropping, keyboard state/hotkey
+    parsing, recovery marker/commands, naming, eligibility, grouping)
 - `cargo clippy --workspace --all-targets` is clean (no warnings).
-- Linux visual regression: 14 automated snapshots at 1920×1080, 1280×800, 125%/150%/200%, plus 4K 200% earlier; all non-empty and dimension-verified.
-- Real pointer/keyboard interaction checks on Xvfb (preview backend only).
+- `cargo xwin clippy --target x86_64-pc-windows-msvc --workspace --all-targets` is clean.
+- Linux visual regression: `scripts/test/ui-snapshots.sh` regenerated all 14 captures
+  (1920×1080, 1280×800, 125%/150%/200%) with the updated preview close-button placement.
+- The Linux preview still runs only on mock data and remains visibly labeled as such.
 
-## Successfully cross-compiled for Windows
+## Cross-compiled for Windows
 
-Both Windows binaries build with `cargo xwin` for `x86_64-pc-windows-msvc`:
+Release cross-build with `cargo xwin` succeeded:
 
-- `target/x86_64-pc-windows-msvc/release/prism-shell.exe` — 14 MB, Windows GUI subsystem.
-- `target/x86_64-pc-windows-msvc/release/prism-preview.exe` — 15 MB, console development preview.
-- Static MSVC CRT (`+crt-static`); no `VCRUNTIME140.dll`/MSVCP dependency.
-- `prism-shell.exe` imports only system DLLs (kernel32, user32, dwmapi, shell32, comctl32, gdi32, etc.).
-- Debug cross-build also succeeds; only benign `LNK4099` debug-CRT PDB warnings.
-- GitHub Actions run
-  [44983452807](https://github.com/Scatter97/prism-shell/actions/runs/44983452807) passed on
-  `windows-latest`: formatting, Clippy, 72 tests, and debug executables.
-- GitHub Actions run
-  [44985985957](https://github.com/Scatter97/prism-shell/actions/runs/44985985957) passed both
-  jobs for the HWND fix (`3936efd`): Linux 15m14s, Windows 19m42s, including format, Clippy, 72
-  tests, and debug executables.
-- These are native MSVC compile/test runs on hosted Windows Server runners, not Windows 11 desktop
-  sessions.
+| Artifact | Size | Subsystem |
+|---|---|---|
+| `prism-shell.exe` | 14.5 MB | Windows GUI |
+| `prism-recovery.exe` | 325 KB | Windows console |
+| `prism-preview.exe` | 14.8 MB | Windows console (mock development preview) |
 
-### Native Windows path implemented
+`prism-shell.exe` imports only system DLLs (kernel32, user32, dwmapi, shell32, comctl32, gdi32,
+ole32, opengl32, etc.). The static MSVC CRT is used; there is no VCRUNTIME140/MSVCP dependency.
+The release link still prints benign `LNK4099` warnings for missing Microsoft CRT PDBs supplied by
+cargo-xwin; the binaries are produced successfully.
 
-- `prism-windows` crate, compiled only on Windows except for portable layout/filtering modules.
-- Real top-level window enumeration with filtering:
-  - Own process, invisible, cloaked, shell/desktop classes, tool windows without `WS_EX_APPWINDOW`, owned windows without `WS_EX_APPWINDOW`, zero-size.
-  - Minimized and elevated windows retained; elevated/unknown identities fall back to HWND identity instead of disappearing.
-- Application grouping by normalized executable path; `ApplicationFrameHost` UWP frames are kept separate per HWND with title-based names and generic icons (AUMID extraction still future).
-- Real foreground tracking with `SetWinEventHook` (`EVENT_SYSTEM_FOREGROUND`, object create/name events, minimize events) plus 5-second reconciliation.
-- Real application icons from `SHGetFileInfoW` → RGBA → Slint, cached per app; generic fallback on failure.
-- Real activation/minimize/restore:
-  - `ShowWindow(SW_RESTORE)`, `SetForegroundWindow`, `FlashWindowEx` on denial, `ShowWindow(SW_MINIMIZE)`.
-- Pinned apps: real File Explorer, Command Prompt, Windows PowerShell, and Microsoft Edge when found.
-- Real launcher with search, pinned/running apps, real icons, launch/activate.
-- Native window hosts:
-  - Frameless, transparent Slint surfaces.
-  - Taskbar: full work-area-width topmost tool window, `WS_EX_NOACTIVATE`, `WM_MOUSEACTIVATE = MA_NOACTIVATE`, per-pixel click-through outside the visible dock (`WM_NCHITTEST`).
-  - Control Center/launcher: topmost tool windows with transparent shadow margins, click-through margins, Escape/focus-loss close, real focus for search.
-  - DWM dark mode, no-round native corners, no border; Slint draws the rounded material.
-  - HWND attachment waits for the first event-loop tick (winit creates windows asynchronously)
-    and fails visibly after a 5 s startup timeout.
-  - Positions above the Windows taskbar using the monitor work area.
-- Real Control Center actions:
-  - Quick tiles and connectivity links open native Windows Settings pages.
-  - Real battery state via `GetSystemPowerStatus`.
-  - Real workstation lock via `LockWorkStation`.
-  - Exit action closes Prism only.
-  - Audio/brightness/media remain explicitly unavailable; no fake sliders or metadata.
-- No mock data in the Windows production backend.
-- No taskbar hiding, Explorer replacement, registry changes, auto-start, or AppBar reservation.
+Native `windows-latest` CI is defined in `.github/workflows/ci.yml`; this milestone has not been
+pushed, so no new CI run is claimed. The previous two Windows CI runs passed the older 72-test
+baseline:
 
-## Actually tested on Windows 11
+- [44983452807](https://github.com/Scatter97/prism-shell/actions/runs/44983452807) for `25668a9`:
+  Linux 9m55s, Windows 14m31s.
+- [44985985957](https://github.com/Scatter97/prism-shell/actions/runs/44985985957) for the HWND fix
+  `3936efd`: Linux 15m14s, Windows 19m42s.
 
-**One startup attempt was made on a Windows 11 x64 machine using a source build. It failed before
-any Prism surface appeared.**
+Both Windows jobs ran format, Clippy, 72 tests, and debug executables on hosted Windows Server
+runners, not Windows 11 desktops. A new CI run should be executed after push.
 
-- Error: `window handle unavailable: the underlying handle cannot be represented using the types
-  in this crate`.
-- Cause: Slint/winit creates the native Win32 window asynchronously, after the event loop starts.
-  The old startup path called `window_handle()` immediately after `show()`, when no HWND existed.
-- Fix: commit `3936efd` resolves and configures the taskbar HWND on the first event-loop tick,
-  attaches Control Center/launcher HWNDs when each window becomes available, and exits with a
-  visible startup error after a 5-second timeout.
-- Status: the fix is cross-compiled for `x86_64-pc-windows-msvc`, passed portable tests on Linux,
-  and passed native `windows-latest` CI build/tests (run 44985985957). It has **not** been re-run
-  on a Windows 11 desktop.
+## Owner-confirmed on Windows 11
 
-No successful interactive Windows 11 runtime test has been executed, and the binaries have not run
-under Wine. The `windows-latest` CI runner (Windows Server) proves the MSVC build, link, and
-portable test behavior; it does **not** exercise the Slint surfaces, DWM, Explorer, focus rules, or
-real window tracking.
+- `prism-shell.exe` starts and stays running.
+- The floating taskbar renders with native application icons.
+- Clicking application icons activates/switches real windows.
+- The original Windows taskbar remains visible and usable alongside Prism.
+- The launcher and Control Center are implemented; not every interaction is validated.
 
-Therefore the following remain **Unverified**:
+## Not yet validated on Windows 11
 
-- Whether the taskbar/CC/launcher windows open at all and render with correct alpha.
-- Frameless/transparent appearance and DWM composition.
-- Focus/non-activation behavior and whether `SetForegroundWindow` succeeds from the NOACTIVATE taskbar.
-- Z-order, click-through strip, Escape/focus-loss behavior.
-- Real window enumeration/grouping, icons, launch, activation, minimize/restore.
-- DPI/positioning across 100/125/150/200% and monitor changes.
-- Explorer coexistence, process death recovery, lock/sleep/resume.
-- Performance, memory, GPU, idle behavior.
+- Live DWM thumbnails, preview positioning, hover handoff, activation from a preview card, close
+  buttons, minimized/destroyed/fullscreen windows, and DPI/edge clamping for previews.
+- The independent recovery watchdog, taskbar hiding/restoration, Explorer restart behavior,
+  multi-monitor secondary taskbars, heartbeat timeout, force-kill recovery, and replacement-mode
+  work-area behavior.
+- Standalone Windows-key interception, shortcut preservation with the synthetic replay, elevated
+  apps, fullscreen apps, and hook cleanup under kill/crash.
+- Control Center interactions beyond the owner's basic smoke use; real battery/Settings/lock/exit
+  require the existing checklist.
 
-## Known limitations / risks for the first Windows session
+## Known limitations / risks
 
-- The dock is an overlay; it does **not** reserve work area. It can cover the bottom of maximized windows. AppBar reservation is deferred until validated.
-- Primary monitor only.
-- No taskbar hiding or Explorer replacement.
-- No window-preview thumbnails, right-click menu, pinning UI, multi-window chooser, or Start menu.
-- The dock model is rebuilt on reconciliation; the active window is preserved, but per-window MRU order is approximate without a chooser.
-- UWP grouping is per-window/generic-icon until AUMID extraction is added.
-- Elevated/protected apps may deny icon/process inspection or activation; generic/flash fallback.
-- Pinned apps are discovered defaults, not yet configurable through the Windows config.
-- 32 px shell icons may soften at 150/200% scaling.
-- Fullscreen apps/games are not detected; the topmost dock may overlay them.
-- No single-instance guard.
-- No installer/code signing/auto-start/recovery executable.
-- Slint license decision remains open before distribution.
+- DWM thumbnails cannot be rounded by Slint; the card surface is rounded and the thumbnail is
+  inset, but the live image itself has square corners.
+- Minimized windows show a "Minimized" card without a live thumbnail.
+- Previews beyond the monitor width fall back to the existing scrolling card strip; only the
+  on-screen card positions map to DWM thumbnails. Typical multi-window apps fit.
+- Taskbar replacement cannot reserve work area. Maximized windows still use the Windows work area,
+  so the Prism dock overlaps their bottom edge. AppBar reservation remains deferred.
+- The notification area and third-party tray icons are not replicated. While the native taskbar is
+  hidden, the documented fallback is the Control Center "Restore bar" action or
+  `prism-recovery.exe --restore`.
+- The taskbar window class names and the hide/show method are observed Explorer internals, not a
+  Microsoft compatibility contract. Future Windows builds may change them.
+- The Windows-key hook is a global low-level hook. It is off by default, only runs while Prism is
+  alive, and is removed by Windows on process exit, but it still needs real Windows validation.
+- Elevated/UIPI targets and exclusive-fullscreen apps may deny activation or overlay behavior.
+- UWP grouping still uses per-window frame identities and generic icons until AUMID extraction.
+- No installer, code signing, auto-start, single-instance guard, or distribution license decision.
+- Audio, radios, brightness, media, tray replication, and notification interception remain
+  unavailable or deferred.
 
 ## Recommended next step
 
-**Rebuild from commit `3936efd` or newer, then execute `docs/WINDOWS_VALIDATION.md` on a real
-Windows 11 x64 machine, starting at 100% scaling with a single monitor.** The first check is
-whether the deferred-HWND startup fix lets the taskbar window appear at all. Then fix the first
-blocker found, in this order:
-
-1. Does the taskbar window appear and render alpha correctly?
-2. Does clicking a dock app activate/minimize the real target?
-3. Does control-center/launcher focus and click-through behave?
-4. Do enumeration/icons/grouping make sense for common apps?
-5. Then validate DPI, multi-monitor, and work-area reservation.
-
-Do not add taskbar hiding or deeper Explorer integration before the overlay/focus/recovery fundamentals are proven.
+1. Run the Phase A preview checklist on Windows 11 at 100% and 200% (single monitor first).
+2. On a disposable Windows 11 VM or spare machine, run the Phase B recovery checklist **before**
+   enabling taskbar replacement on the owner's machine. Capture taskbar visibility after a forced
+   Prism kill and a frozen-heartbeat test.
+3. Run the Phase C keyboard checklist with every required shortcut, then with an elevated app and a
+   fullscreen app. Keep the fallback shortcut configured.
+4. Only after 1–3 pass, consider enabling the experimental gates for daily use.

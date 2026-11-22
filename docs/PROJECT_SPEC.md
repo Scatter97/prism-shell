@@ -1303,19 +1303,22 @@ Approved:
 
 Proposed, requiring implementation validation:
 - Exact dimensions and colors.
-- Native UI framework.
-- Specific Windows API integrations.
-- Taskbar coexistence technique.
-- Window preview implementation.
+- Window-preview live-thumbnail behavior on the transparent Slint destination.
+- Experimental taskbar replacement/recovery on real Windows 11.
+- Standalone Windows-key shortcut preservation.
 - Audio device switching strategy.
 - Tray and notification behavior.
 
+Implemented but still requiring the Windows 11 runtime gate:
+- Native Windows taskbar, launcher, Control Center, and DWM live previews.
+- Independent `prism-recovery.exe` and opt-in taskbar replacement.
+- Opt-in standalone Windows-key launcher with fallback hotkey.
+
 Not yet implemented:
-- All application code.
-- All native integrations.
-- All tests.
-- Windows packaging.
-- Release tooling.
+- Audio/radio/brightness/media controls.
+- AppBar work-area reservation and multi-monitor dock instances.
+- Tray/notification integration.
+- Installer, code signing, auto-start, and release tooling.
 
 Next step:
-Complete Phase 0, then begin the native application foundation.
+Execute `docs/WINDOWS_VALIDATION.md`, starting with Phase A previews and the Phase B recovery gate.

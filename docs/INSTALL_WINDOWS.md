@@ -1,13 +1,14 @@
 # Installing Prism Shell on Windows 11
 
-Status: **source build only. No signed binary release or installer yet.** The Windows runtime is
-**unverified**. The first Windows 11 launch failed before any surface appeared because the HWND was
-requested before winit created it; commit `3936efd` defers attachment and has not been re-tested.
-See [`WINDOWS_VALIDATION.md`](WINDOWS_VALIDATION.md) before running it.
+Status: **source build only. No signed binary release or installer yet.** Basic taskbar rendering,
+native icons, click activation, and coexistence with the original taskbar are owner-confirmed on
+Windows 11. Live previews and the experimental taskbar/Windows-key integrations are not yet
+runtime-validated. See [`WINDOWS_VALIDATION.md`](WINDOWS_VALIDATION.md) before running it.
 
-Prism Shell is a normal desktop application. It runs alongside Explorer, does not replace the
-Windows shell, does not hide the taskbar, and does not add itself to startup. Explorer remains
-available at all times.
+By default Prism Shell is a normal desktop application. It runs alongside Explorer, does not
+replace the Windows shell, does not hide the taskbar, and does not add itself to startup. Explorer
+remains available at all times. Taskbar replacement is an explicit, disabled-by-default experiment
+with a separate recovery executable.
 
 ## 1. Requirements
 
@@ -54,13 +55,15 @@ Close and reopen PowerShell so `cargo`, `rustup`, and `git` are on `PATH`.
 git clone https://github.com/Scatter97/prism-shell.git
 cd prism-shell
 rustup default stable-x86_64-pc-windows-msvc
-cargo build --release -p prism-app --bin prism-shell
+cargo build --release -p prism-app --bins
 ```
 
-The executable is:
+The executables are:
 
 ```text
 target\release\prism-shell.exe
+target\release\prism-recovery.exe
+target\release\prism-preview.exe   (mock development preview, not the shell)
 ```
 
 The build may take several minutes the first time. If `link.exe` is not found, the C++ workload
@@ -76,8 +79,12 @@ Expected behavior:
 
 - A floating Prism dock appears above the normal Windows taskbar.
 - The Windows taskbar stays visible and usable.
+- Hover a running app for about 300 ms to see DWM live window previews.
 - Click the Control Center trigger on the dock's right side, then use **Exit** to close Prism.
 - Logs are written to `%LOCALAPPDATA%\Prism\logs\prism-shell.log`.
+
+Do **not** start with `--experimental-taskbar-replacement` on a machine you need. The recovery
+mechanism has not been validated on Windows 11 yet. Default mode changes no shell state.
 
 There is no console window in the release build. If Prism exits immediately, check the log and run
 the debug build for more output:
@@ -86,26 +93,64 @@ the debug build for more output:
 cargo run -p prism-app --bin prism-shell
 ```
 
-## 5. Optional shortcut
+## 5. Experimental recovery and taskbar replacement
+
+Only test this on a disposable Windows 11 VM or spare machine. Copy `prism-recovery.exe` next to
+`prism-shell.exe`, then verify the independent restore path first:
+
+```powershell
+.\prism-recovery.exe --status
+.\prism-recovery.exe --restore
+```
+
+Start replacement mode explicitly:
+
+```powershell
+.\prism-shell.exe --experimental-taskbar-replacement
+```
+
+Use the Control Center **Restore bar** action to exit replacement mode. Forced-kill and
+heartbeat-loss recovery must pass the Phase B gate in
+[`WINDOWS_VALIDATION.md`](WINDOWS_VALIDATION.md) before this is used on a daily-driver machine.
+
+If anything goes wrong and Prism is unresponsive:
+
+```powershell
+.\prism-recovery.exe --restore
+```
+
+This tool does not need Prism to be running. It never terminates Explorer.
+
+Standalone Windows-key mode is also off by default:
+
+```powershell
+.\prism-shell.exe --experimental-windows-key --experimental-windows-key-fallback-hotkey
+```
+
+The fallback is `Ctrl+Alt+Space` unless configured. Test every native `Win+…` shortcut before
+relying on it.
+
+## 6. Optional shortcut
 
 Right-click `target\release\prism-shell.exe`, choose **Show more options → Send to → Desktop
 (create shortcut)**. Do not add it to the Startup folder or Task Scheduler; automatic startup is
 not supported in V1.
 
-## 6. First-run checklist
+## 7. First-run checklist
 
 At minimum, confirm:
 
 - Explorer and the Windows taskbar are still visible.
 - The dock appears above the taskbar and its transparent sides do not block desktop clicks.
 - Clicking a pinned/running app launches or activates it.
+- Hovering a running app shows a live preview after ~300 ms; clicking a card activates that window.
 - Control Center opens above the dock and closes on outside click or Escape.
 - Exit removes Prism without affecting Explorer.
 
 The full checklist, including DPI, focus, grouping, and recovery tests, is in
 [`WINDOWS_VALIDATION.md`](WINDOWS_VALIDATION.md).
 
-## 7. Uninstall
+## 8. Uninstall
 
 1. Exit Prism from the Control Center.
 2. Delete the cloned `prism-shell` folder and the shortcut, if any.
@@ -113,20 +158,20 @@ The full checklist, including DPI, focus, grouping, and recovery tests, is in
 
 Prism does not modify the registry, shell registration, startup entries, or the Windows taskbar.
 
-## 8. Why there is no downloadable binary yet
+## 9. Why there is no downloadable binary yet
 
 Two project decisions block publishing a prebuilt release:
 
 - The Slint license choice (GPLv3 or the royalty-free option with attribution) is unresolved.
   See `DECISIONS.md` D-019.
-- The native Windows host has only been exercised by one failed startup attempt on Windows 11; the
-  HWND timing fix is pending re-test. Therefore its transparency, focus, activation, and Explorer
-  coexistence are unverified. See `CURRENT_STATUS.md`.
+- Basic taskbar/icon/activation/coexistence is owner-confirmed, but DWM live previews, the
+  independent recovery watchdog, and the Windows-key hook are not runtime-validated. Taskbar
+  replacement must stay disabled until its recovery gate passes. See `CURRENT_STATUS.md`.
 
 Once those are resolved, a tagged GitHub Release can provide an unsigned test build. Until then,
 building from source is the supported path.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Symptom | Action |
 |---|---|
@@ -137,4 +182,6 @@ building from source is the supported path.
 | Dock is invisible or has a black box | Record GPU/driver and scale; try `SLINT_BACKEND=software`; report the log. |
 | Clicking apps does not activate them | Record whether the target is elevated; this is a known unverified foreground path. |
 | Dock covers a maximized window | Expected: no AppBar work-area reservation in this build. |
-| Windows taskbar disappeared | Prism does not hide it; stop Prism and verify Explorer is running. |
+| Windows taskbar disappeared | Only possible if you explicitly enabled replacement mode. Run `prism-recovery.exe --restore`, then stop Prism and verify Explorer is running. |
+| Live previews are black/empty | Record GPU/driver and renderer; check `prism-shell.log` for DWM thumbnail errors. Card chrome remaining visible with no live content is the intended fallback. |
+| A `Win+…` shortcut stopped working | Exit Prism or remove `--experimental-windows-key`; use only the fallback hotkey while reporting the shortcut. |

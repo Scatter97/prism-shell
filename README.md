@@ -2,12 +2,13 @@
 
 A native Windows 11 floating taskbar/dock and Control Center, written in Rust.
 
-> **Status: Phase 3A native Windows shell implemented, successfully cross-compiled, Windows launch
-> attempted.** The first Windows 11 launch failed before any Prism surface appeared because the
-> HWND was requested before winit created it. Commit `3936efd` defers HWND attachment and has not
-> yet been re-tested. The Linux preview is still the only runtime-tested UI. Every other Windows
-> runtime behavior is **unverified**; see `docs/WINDOWS_VALIDATION.md`. Prism does **not** replace
-> Explorer, hide the Windows taskbar, modify the registry, or present mock data as real Windows
+> **Status: native Windows taskbar, icons, click activation, and coexistence with the original
+> taskbar are owner-confirmed on Windows 11. Live DWM window previews, opt-in taskbar replacement,
+> and standalone Windows-key integration are implemented and cross-compiled but not yet
+> runtime-validated.** The Linux preview remains the only fully runtime-tested UI path. Taskbar
+> replacement is **off by default** and must not be enabled until its independent recovery
+> watchdog passes the Windows 11 gate in `docs/WINDOWS_VALIDATION.md`. Prism never replaces
+> Explorer, never changes registry/shell registration, and never presents mock data as real Windows
 > system state.
 
 ## What you can run today
@@ -35,14 +36,24 @@ actions say "preview only" and never touch the host system.
 The Windows binary is a separate, real backend:
 
 ```bash
-cargo xwin build --release --target x86_64-pc-windows-msvc -p prism-app --bin prism-shell
+cargo xwin build --release --target x86_64-pc-windows-msvc -p prism-app --bins
 ```
 
-It creates a floating taskbar, Control Center, and launcher as native windows alongside Explorer,
-with real top-level window enumeration, executable-based grouping, shell icons, launch/activation,
-clock, battery, native Settings shortcuts, and workstation lock. Audio, Wi-Fi/Bluetooth toggles,
-brightness, and media are shown as unavailable rather than faked. See
-`docs/WINDOWS_VALIDATION.md` before running it; it has not been validated on Windows 11 yet.
+It creates a floating taskbar, Control Center, launcher, and live window-preview surface as native
+windows alongside Explorer, with real top-level window enumeration, executable-based grouping,
+shell icons, launch/activation, DWM live thumbnails, clock, battery, native Settings shortcuts, and
+workstation lock. Audio, Wi-Fi/Bluetooth toggles, brightness, and media are shown as unavailable
+rather than faked. Basic taskbar/icons/activation/coexistence are owner-confirmed; previews and the
+experimental integrations still need the checklist. See `docs/WINDOWS_VALIDATION.md`.
+
+Build the experimental recovery helper with the same command (it is one of the `prism-app` bins):
+
+```text
+target/x86_64-pc-windows-msvc/release/prism-recovery.exe
+```
+
+Keep `prism-shell.exe` and `prism-recovery.exe` in the same directory if you intend to test
+`--experimental-taskbar-replacement`.
 
 ## Screenshots
 
@@ -80,9 +91,33 @@ and remaining unknowns.
 To build and run it on Windows, follow [`docs/INSTALL_WINDOWS.md`](docs/INSTALL_WINDOWS.md).
 There is no signed installer or prebuilt release yet.
 
+## Experimental Windows integrations
+
+These are opt-in, off by default, and currently **not Windows-runtime-validated**:
+
+- **Live previews** are always on in the Windows build; they are separate from the experimental
+  gates and need Phase A validation.
+- **Taskbar replacement:** `prism-shell.exe --experimental-taskbar-replacement` or
+  `"experimental": { "taskbar_replacement": true }` in `%APPDATA%\Prism\config.json`. Requires
+  `prism-recovery.exe` beside the shell. **Do not enable until the recovery gate passes.**
+- **Standalone Windows key:** `--experimental-windows-key`. A Win tap opens/closes the Prism
+  launcher; combinations are preserved by synthetic key-down replay.
+- **Fallback shortcut:** `--experimental-windows-key-fallback-hotkey` and the
+  `windows_key_fallback_shortcut` config string (default `Ctrl+Alt+Space`).
+
+Manual recovery, independent of Prism:
+
+```powershell
+.\prism-recovery.exe --status
+.\prism-recovery.exe --restore
+```
+
+The watchdog mode is started automatically before hiding:
+`prism-recovery.exe --watch-parent <pid>`.
+
 ## Safety
 
-V1 runs alongside Explorer. It does not:
+By default Prism runs alongside Explorer. It does not:
 
 - replace or terminate Explorer;
 - modify system-shell registration or system binaries;
@@ -92,10 +127,14 @@ V1 runs alongside Explorer. It does not:
 - inject into processes or use undocumented Explorer hooks;
 - require administrator privileges.
 
-Taskbar hiding, AppBar work-area reservation, multi-monitor surfaces, tray replication,
-notification interception, and audio/radio/brightness/media controls are **deferred** until the
-current overlay is validated on Windows 11. See `docs/WINDOWS_API_RESEARCH.md` and
-`docs/DECISIONS.md`.
+The opt-in taskbar-replacement experiment only calls `ShowWindow` on the observed native taskbar
+windows and is backed by a standalone watchdog that restores them after a crash, force-kill, or
+4-second heartbeat loss. Explorer stays alive throughout. It remains blocked for enablement until
+tested on real Windows 11.
+
+AppBar work-area reservation, multi-monitor dock surfaces, tray replication, notification
+interception, and audio/radio/brightness/media controls remain **deferred**. See
+`docs/WINDOWS_API_RESEARCH.md` and `docs/DECISIONS.md`.
 
 ## Documentation
 

@@ -114,7 +114,13 @@ A floating dock with a gap and rounded corners cannot reserve exactly its visual
 
 Consequences: Explorer can recreate/reset the taskbar; the secondary taskbar must be handled separately; a crash while hidden can leave the user without a taskbar; there is no supported state/notification contract. **Do not use registry `StuckRects3` or similar Explorer state edits**; they are undocumented, persistent, and can make recovery harder.
 
-V1 decision: **do not hide the taskbar**. Any Phase 6 opt-in experiment requires: an independent recovery executable that does not link Prism (runnable from `Win+R`/Task Manager); a watchdog that restores the taskbar if Prism exits; tested hide/show on primary/secondary taskbars, Explorer restart, reboot, and crash; no auto-start/default-on; and documented rollback. The recovery tool should find both taskbar classes, call `ShowWindow(SW_SHOW)`, and restart Explorer only as a last resort with a warning that File Explorer windows will close. Test on a disposable VM first. [R12]
+Current implementation: **default mode does not hide the taskbar**. The opt-in experiment now
+includes a standalone `prism-recovery.exe` (runnable from `Win+R`/Task Manager or manually), a
+heartbeat/watchdog that restores after a crash or freeze, a marker recording original visibility,
+startup stale-marker cleanup, and `ShowWindow(SW_SHOW)` restoration for both taskbar classes.
+Explorer is never restarted or terminated. The feature remains disabled by default and blocked for
+enablement until tested on a disposable Windows 11 VM; real Explorer restart, secondary-taskbar,
+and reboot behavior are still unverified. [R12]
 
 **Reliability:** high for a plain overlay; medium for AppBar reservation across DPI/multi-monitor/fullscreen; low/unsafe for taskbar hiding.
 

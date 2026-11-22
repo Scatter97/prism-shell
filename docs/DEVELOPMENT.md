@@ -1,8 +1,10 @@
 # Development Guide — Prism Shell
 
-Status: Linux development workflow and Windows cross-build workflow are implemented. The native
-Windows shell has been launched once on Windows 11 but failed at startup because the HWND was not
-available immediately after `show()`. Commit `3936efd` defers attachment; re-test is pending.
+Status: Linux development workflow and Windows cross-build workflow are implemented. Basic native
+taskbar rendering, icons, click activation, and coexistence with the original taskbar are
+owner-confirmed on Windows 11. Live DWM previews, taskbar replacement/recovery, and standalone
+Windows-key integration are implemented but not yet runtime-validated; replacement is disabled by
+default.
 
 ## 1. Toolchain
 
@@ -30,8 +32,9 @@ crates/
   prism-core/              portable domain/state, no I/O, unsafe forbidden
   prism-platform/          platform traits + explicit mock backend
   prism-ui/                Slint UI, design tokens, assets, view mapping
-  prism-windows/           native Windows host/tracker/icons/platform + portable tests
-  prism-app/               preview + production entry point, config, logging, controller
+  prism-windows/           native host, tracker, icons, DWM previews, keyboard hook,
+                           taskbar recovery, platform + portable tests
+  prism-app/               preview, shell, and recovery entry points; config/logging/controller
 assets/
   fonts/                   Inter Regular/Medium/SemiBold + OFL
   icons/status/            Lucide status icons
@@ -104,9 +107,20 @@ Minimal example:
   "version": 1,
   "pinned_apps": ["files", "browser", "terminal", "mail"],
   "dock": { "show_date": true, "use_24_hour_clock": true },
-  "accessibility": { "reduced_motion": false }
+  "accessibility": { "reduced_motion": false },
+  "experimental": {
+    "taskbar_replacement": false,
+    "windows_key_launcher": false,
+    "windows_key_fallback_hotkey": false,
+    "windows_key_fallback_shortcut": "Ctrl+Alt+Space"
+  }
 }
 ```
+
+All experimental fields default to disabled. Do not enable `taskbar_replacement` until the
+recovery gate in `WINDOWS_VALIDATION.md` passes. The shell can also be opted in explicitly with
+`--experimental-taskbar-replacement`, `--experimental-windows-key`, and
+`--experimental-windows-key-fallback-hotkey`.
 
 ## 6. Virtual display for visual tests
 
@@ -186,47 +200,61 @@ Outputs:
 
 ```
 target/x86_64-pc-windows-msvc/debug/prism-shell.exe
+target/x86_64-pc-windows-msvc/debug/prism-recovery.exe
 target/x86_64-pc-windows-msvc/debug/prism-preview.exe
 target/x86_64-pc-windows-msvc/release/prism-shell.exe
+target/x86_64-pc-windows-msvc/release/prism-recovery.exe
 target/x86_64-pc-windows-msvc/release/prism-preview.exe
 ```
 
 The milestone attempt and any errors are recorded in `docs/CURRENT_STATUS.md`. Cross-compiling
-proves the Rust/MSVC link path, not Windows runtime behavior.
+proves the Rust/MSVC link path, not Windows runtime behavior. `prism-recovery.exe` is a standalone
+console binary; keep it next to `prism-shell.exe` for the experimental taskbar mode.
 
 `.cargo/config.toml` enables `+crt-static` for the MSVC target. The debug link emits a harmless
 `LNK4099` warning because the Microsoft debug CRT PDB is not shipped with the xwin SDK; the
 resulting binary has no `VCRUNTIME140.dll`/`MSVCP` dependency. The release build avoids the debug
 PDB warning.
 
-`prism-shell.exe` is the native Windows shell. It creates three real Slint windows (taskbar,
-Control Center, launcher), enumerates real top-level windows, extracts real shell icons, and
-launches/activates real applications. It runs alongside Explorer and does not replace Explorer,
-hide the Windows taskbar, modify the registry, auto-start, or reserve work area. System controls
-without an implementation (audio, radios, brightness, media) are shown as unavailable.
+`prism-shell.exe` is the native Windows shell. It creates four real Slint surfaces (taskbar,
+Control Center, launcher, live preview), enumerates real top-level windows, extracts real shell
+icons, registers DWM thumbnails, and launches/activates real applications. By default it runs
+alongside Explorer and does not replace Explorer, hide the Windows taskbar, modify the registry,
+auto-start, or reserve work area. System controls without an implementation (audio, radios,
+brightness, media) are shown as unavailable.
+
+The experimental taskbar mode is off by default. It requires `prism-recovery.exe` next to the shell
+and a marker/heartbeat watchdog. The Windows-key hook is also off by default and is only installed
+with an explicit opt-in.
 
 `prism-preview.exe` / `prism-preview` remains the mock development preview. It is never used as
 the production backend.
 
 ## 9. Windows runtime workflow
 
-The runtime status is **Unverified**. Use `docs/WINDOWS_VALIDATION.md` as the executable checklist
-and `scripts/test/windows-smoke.ps1` for a non-destructive first launch.
+Basic overlay taskbar/icons/activation/coexistence is owner-confirmed. Everything in the new
+preview/replacement/keyboard paths is **Unverified** until executed. Use
+`docs/WINDOWS_VALIDATION.md` as the executable checklist and `scripts/test/windows-smoke.ps1` for a
+non-destructive first launch.
 
 1. Use a disposable Windows 11 x64 VM (or spare physical machine) with Explorer as the normal
    shell, a single primary monitor at 100%, and no administrator launch.
-2. Copy `prism-shell.exe` and `prism-preview.exe` from the release cross-build.
+2. Copy `prism-shell.exe`, `prism-recovery.exe`, and `prism-preview.exe` from the release build.
 3. Optionally run `powershell -ExecutionPolicy Bypass -File scripts/test/windows-smoke.ps1
    -Exe .\prism-shell.exe`. It starts Prism, confirms Explorer is still alive, captures the primary
    screen, copies `%LOCALAPPDATA%\Prism\logs\prism-shell.log`, and stops only Prism.
-4. Complete the manual checklist (transparency, click-through, activation, focus, DPI, grouping,
-   Control Center, recovery). Attach screenshots and the log.
-5. Exit through the Control Center, then confirm Explorer and the Windows taskbar are unchanged.
-6. Only after the overlay/focus/recovery fundamentals pass should work begin on AppBar work-area
-   reservation, multi-monitor, or deeper shell integration.
+4. Complete Phase A (previews) and the baseline checklist (transparency, click-through, activation,
+   focus, DPI, grouping, Control Center). Attach screenshots and the log.
+5. On a disposable VM only, run the Phase B recovery gate before enabling taskbar replacement:
+   `prism-recovery.exe --status`, forced-kill restore, frozen heartbeat, Explorer restart, and
+   multi-monitor restore.
+6. Run the Phase C keyboard matrix with the full `Win+…` shortcut list and the fallback hotkey.
+7. Exit through the Control Center, then confirm Explorer and the Windows taskbar are unchanged
+   (or restored after replacement mode).
 
-Keep `explorer.exe` running and the original taskbar accessible at all times in V1. Kill Prism from
-Task Manager if a surface blocks the desktop; no system state is changed by doing so.
+Keep `explorer.exe` running. In default mode, kill Prism from Task Manager if a surface blocks the
+desktop; no system state changes. In replacement mode, `prism-recovery.exe --restore` is the
+independent fallback.
 
 A native `windows-latest` CI job may build/test/fmt/clippy, but it cannot validate DWM
 transparency, Explorer focus rules, the taskbar, Core Audio endpoints, radios, or notification
@@ -245,4 +273,5 @@ desktop runtime test. CI cancels superseded runs on the same ref and skips Markd
 | `no method run` in a new binary | Import `slint::ComponentHandle`. |
 | Overlays intercept clicks while closed | They use a `present` flag + close timer; keep this pattern when adding panels. |
 | Windows build cannot find a linker/C compiler | `cargo xwin` downloads the CRT/SDK; for C dependencies install clang/lld or use a native Windows runner. |
-| Taskbar/Explorer changed unexpectedly | Stop; do not add recovery hacks. V1 must never change the shell. |
+| Taskbar/Explorer changed unexpectedly in default mode | Stop; default mode must never change the shell. Capture logs before changing code. |
+| Taskbar hidden after an experimental run | Run `prism-recovery.exe --restore`; check the marker and recovery log. Do not enable replacement again until the gate passes. |

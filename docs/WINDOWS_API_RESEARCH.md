@@ -1,8 +1,9 @@
 # Windows API Research — Prism Shell V1
 
-Status: Research complete enough to choose the architecture. Windows runtime integration is
-**Proposed/Unverified** until executed on a real Windows 11 machine or VM. Linux preview success
-does not validate any of the Windows-specific behavior here.
+Status: Research complete enough to choose the architecture. Basic Windows 11 taskbar/icons/
+activation/coexistence is owner-confirmed. DWM preview hosting, taskbar recovery/replacement, and
+the Windows-key hook remain **Proposed/Unverified** until executed on a real Windows 11 machine or
+VM. Linux preview success does not validate any Windows-specific behavior here.
 
 Detailed citation notes: [`docs/research/windows-api-notes.md`](research/windows-api-notes.md).
 Framework evaluation: [`UI_FRAMEWORK_EVALUATION.md`](UI_FRAMEWORK_EVALUATION.md).
@@ -158,24 +159,27 @@ multi-monitor.
 
 ## 9. Safe taskbar hiding and restoration
 
-**Not implemented. Deferred and safety-gated.**
+**Implemented behind a disabled experimental gate; Windows recovery validation pending.**
 
-The common technique is `FindWindowW(L"Shell_TrayWnd", NULL)` + `ShowWindow(SW_HIDE)`, with
-`Shell_SecondaryTrayWnd` for secondary monitors. `FindWindowW`/`ShowWindow` are documented, but
-the taskbar window class names and Explorer's internal hierarchy are **Observed/undocumented**;
-the Windows 11 taskbar is Explorer/XAML-internal and can change between builds. Registry
-`StuckRects3` edits are undocumented and persistent. They are not an acceptable recovery
-foundation.
+The implementation uses `EnumWindows` + class match for `Shell_TrayWnd` /
+`Shell_SecondaryTrayWnd`, then documented `ShowWindow(SW_HIDE)`/`ShowWindow(SW_SHOW)` calls. The
+class names and Explorer's internal hierarchy are **Observed/undocumented**; the Windows 11 taskbar
+is Explorer/XAML-internal and can change between builds. Registry `StuckRects3` edits are
+undocumented and persistent and were rejected.
 
-A future opt-in experiment requires:
+The opt-in experiment includes:
 
-1. An independent recovery executable that does not link the running shell.
-2. A watchdog that restores the taskbar if Prism exits unexpectedly.
-3. Tested restore on primary/secondary taskbars, Explorer restart, reboot, and kill -9/crash.
-4. No auto-start, no default-on, no system-wide shell registration.
-5. A documented rollback and an explicit owner approval.
+1. A standalone `prism-recovery.exe` that does not link the running shell's event loop or UI.
+2. A named heartbeat + marker file; the watchdog restores after 4 s of no heartbeat, parent exit,
+   or an unreadable marker.
+3. Restore paths for clean exit, Control Center **Restore bar**, startup stale-marker cleanup, and
+   manual `--restore`.
+4. Explicit opt-in only; no auto-start, default-on, shell registration, injection, or registry
+   change.
+5. A documented rollback and a mandatory Windows 11 recovery gate.
 
-**Status:** **Deferred/Blocked** for V1. The current bootstrap makes no shell changes.
+**Status:** Implemented, cross-compiled, and portable-marker-tested. **Blocked for enablement**
+until the Phase B recovery gate passes on real Windows 11. Explorer is never terminated.
 
 ## 10. Multi-monitor and DPI
 
@@ -314,17 +318,18 @@ clippy. It is not a substitute for interactive Explorer/DWM/taskbar/audio/radio 
 dedicated Windows 11 VM or physical machine for Phase 3 and Phase 6. Wine is useful only for pure
 logic tests; it is not Windows Explorer, DWM, Core Audio, radios, or the notification stack.
 
-The project has no remote push in this milestone. A CI workflow can be added when the repository
-has a remote and the owner authorizes it.
+The repository has a CI workflow for Linux and Windows build/test. This milestone was not pushed
+from the development environment, so no new CI run is claimed.
 
 ## 19. Recovery and crash-safe shell behavior
 
-V1 does not hide the taskbar, replace Explorer, register a shell, or auto-start. Therefore a crash
-leaves Windows unchanged. The Windows bootstrap in this milestone shows a diagnostic message box
-and exits instead of running mock data. Any future hide/deep integration must be independent of
-Prism's process and tested from `Win+R`/Task Manager, including Explorer restart and reboot. The
-recovery tool must restore both primary and secondary taskbars and must not depend on Prism being
-alive. See section 9 and `docs/ARCHITECTURE.md` §6.
+Default mode does not hide the taskbar, replace Explorer, register a shell, or auto-start, so a
+crash leaves Windows unchanged. The experimental taskbar mode is the exception and is backed by an
+independent `prism-recovery.exe` watchdog, heartbeat, marker file, startup stale-marker check, and
+manual `--restore`. It is off by default and must be tested from Task Manager/forced-kill,
+suspended-heartbeat, Explorer restart, and reboot before enablement. The recovery tool shows both
+primary and secondary taskbars and does not depend on Prism being alive. See section 9 and
+`docs/ARCHITECTURE.md` §6.
 
 ## 20. Automated screenshots and interface testing
 
@@ -336,10 +341,12 @@ alive. See section 9 and `docs/ARCHITECTURE.md` §6.
 - `xdotool` was used for real pointer/keyboard interaction tests on Xvfb (open/close Control
   Center, toggle Wi-Fi, drag volume, search launcher, hover previews, minimize, close window,
   power confirmation).
-- Windows visual validation will need a real session. DWM thumbnails are the primary future
-  window-preview mechanism; Windows.Graphics.Capture requires a system picker/consent and is not
-  suitable for automatic hover previews. `PrintWindow` is a last-resort fallback and must not run
-  on the UI thread.
+- Windows visual validation will need a real session. DWM thumbnails are now the implemented
+  window-preview mechanism: the dedicated Slint preview HWND is the DWM destination and card
+  rectangles are mapped to physical pixels. Windows.Graphics.Capture requires a
+  picker/consent and is not suitable for automatic hover previews. `PrintWindow` remains a
+  last-resort fallback and must not run on the UI thread. DWM thumbnails against a transparent
+  Slint/winit destination still need real Windows 11 validation.
 [DwmRegisterThumbnail](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/nf-dwmapi-dwmregisterthumbnail)
 [Windows.Graphics.Capture](https://learn.microsoft.com/en-us/windows/uwp/graphics/capture)
 
@@ -351,7 +358,9 @@ alive. See section 9 and `docs/ARCHITECTURE.md` §6.
 | App grouping/activation | Medium-high; UIPI/UWP risks | Model implemented; Win32 deferred |
 | Taskbar coexistence as overlay | High | Planned; test on Windows |
 | AppBar work-area reservation | Medium; not a taskbar replacement | Deferred |
-| Hiding the Windows taskbar | Low/safety-critical due to undocumented Explorer internals | **Blocked** without recovery approval |
+| DWM live window previews | Medium-high; transparent destination unverified | Implemented; Phase A Windows test pending |
+| Hiding the Windows taskbar | Low/safety-critical due to undocumented Explorer internals | Implemented behind disabled gate; **Blocked** until recovery validation |
+| Standalone Windows-key launcher | Medium; global hook + synthetic replay unverified | Implemented behind disabled gate; fallback hotkey |
 | Volume/mute | High | Deferred to Phase 5 |
 | Default audio switching | Low via documented APIs | Read-only list + Settings fallback |
 | Wi-Fi/BT status | Medium (location/policy) | Deferred |
@@ -361,6 +370,6 @@ alive. See section 9 and `docs/ARCHITECTURE.md` §6.
 | Media control | Medium (unpackaged capability unverified) | Deferred |
 | Third-party tray replication | Low/unsupported | Deferred/blocked |
 | Arbitrary notification interception | Low/permissioned | Deferred/blocked |
-| Cross-compile from Linux | High for compile/link | Attempted; result in CURRENT_STATUS |
-| Windows runtime validation | Mandatory | Not done |
-| Recovery from shell changes | High if no changes are made | V1 makes no changes |
+| Cross-compile from Linux | High for compile/link | Release build succeeded; see CURRENT_STATUS |
+| Windows runtime validation | Mandatory | Basic taskbar/icons/activation/coexistence owner-confirmed; previews/recovery/keyboard pending |
+| Recovery from shell changes | High if no changes are made | Default makes no changes; opt-in replacement has an independent watchdog |
