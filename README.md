@@ -76,6 +76,9 @@ modification. `prism-preview.exe` is the explicit development preview and still 
 Cross-compilation is not runtime validation; see `docs/CURRENT_STATUS.md` for the exact evidence
 and remaining unknowns.
 
+To build and run it on Windows, follow [`docs/INSTALL_WINDOWS.md`](docs/INSTALL_WINDOWS.md).
+There is no signed installer or prebuilt release yet.
+
 ## Safety
 
 V1 runs alongside Explorer. It does not:
@@ -100,6 +103,7 @@ current overlay is validated on Windows 11. See `docs/WINDOWS_API_RESEARCH.md` a
 - [Windows API research](docs/WINDOWS_API_RESEARCH.md) and [detailed notes](docs/research/windows-api-notes.md)
 - [UI framework evaluation](docs/UI_FRAMEWORK_EVALUATION.md)
 - [Development guide](docs/DEVELOPMENT.md)
+- [Install on Windows 11](docs/INSTALL_WINDOWS.md)
 - [Testing](docs/TESTING.md)
 - [Windows 11 validation checklist](docs/WINDOWS_VALIDATION.md)
 - [Current status](docs/CURRENT_STATUS.md)
