@@ -676,16 +676,24 @@ export component ControlCenter inherits Rectangle {
                 spacing: 8px;
 
                 UtilityButton {
-                    width: UiState.show-unsafe-power ? (parent.width - 24px) / 4 : (parent.width - 16px) / 3;
+                    width: UiState.show-unsafe-power || UiState.taskbar-replacement-active
+                        ? (parent.width - 24px) / 4 : (parent.width - 16px) / 3;
                     glyph: Icons.settings;
                     label: "Settings";
                     clicked => { UiState.open-settings("home"); }
                 }
                 UtilityButton {
-                    width: UiState.show-unsafe-power ? (parent.width - 24px) / 4 : (parent.width - 16px) / 3;
+                    width: UiState.show-unsafe-power || UiState.taskbar-replacement-active
+                        ? (parent.width - 24px) / 4 : (parent.width - 16px) / 3;
                     glyph: Icons.lock;
                     label: "Lock";
                     clicked => { UiState.power-requested("lock"); }
+                }
+                if UiState.taskbar-replacement-active && !UiState.show-unsafe-power : UtilityButton {
+                    width: (parent.width - 24px) / 4;
+                    glyph: Icons.window;
+                    label: "Restore bar";
+                    clicked => { UiState.restore-native-taskbar(); }
                 }
                 if UiState.show-unsafe-power : UtilityButton {
                     width: (parent.width - 24px) / 4;
@@ -701,7 +709,8 @@ export component ControlCenter inherits Rectangle {
                     clicked => { UiState.power-requested("power"); }
                 }
                 if !UiState.show-unsafe-power : UtilityButton {
-                    width: (parent.width - 16px) / 3;
+                    width: UiState.taskbar-replacement-active
+                        ? (parent.width - 24px) / 4 : (parent.width - 16px) / 3;
                     glyph: Icons.power;
                     label: "Exit";
                     clicked => { UiState.quit-shell(); }

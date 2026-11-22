@@ -13,6 +13,9 @@ export global UiState {
     in-out property <bool> show-unsafe-power: true;
     in-out property <bool> show-audio-status: true;
     in-out property <bool> show-wifi-status: true;
+    // True only while the opt-in native-taskbar replacement is active and the
+    // independent recovery watchdog is armed.
+    in-out property <bool> taskbar-replacement-active: false;
 
     // Dock
     in-out property <[AppItem]> apps: [];
@@ -25,6 +28,9 @@ export global UiState {
 
     // Window preview
     in-out property <bool> preview-open: false;
+    // The Windows backend draws real DWM thumbnails over the card slots and
+    // hides the mock miniature. The Linux preview keeps the designed one.
+    in-out property <bool> preview-live-thumbnails: false;
     in-out property <string> preview-app-id: "";
     in-out property <string> preview-app-name: "";
     in-out property <int> preview-app-index: -1;
@@ -125,6 +131,9 @@ export global UiState {
     // Window preview
     callback close-preview();
     callback keep-preview-open(bool);
+
+    // Taskbar replacement recovery
+    callback restore-native-taskbar();
 
     // Developer / application lifecycle
     callback scenario-selected(string);

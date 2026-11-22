@@ -17,6 +17,10 @@ export struct WindowItem {
     app-name: string,
     icon-kind: string,
     minimized: bool,
+    // Real executable icon when the Windows backend has one; the designed SVG
+    // glyph is the fallback used by the Linux mock.
+    has-icon: bool,
+    icon: image,
 }
 
 export struct ToggleItem {

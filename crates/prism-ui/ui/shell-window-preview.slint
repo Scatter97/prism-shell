@@ -1,0 +1,27 @@
+import { Tokens } from "tokens.slint";
+import { UiState } from "state.slint";
+import { WindowPreview } from "components/window-preview.slint";
+
+// Production window-preview surface. It is a separate topmost, non-activating
+// tool window so DWM can register live thumbnails against its HWND while the
+// pointer can travel from the dock into the preview and back.
+export component ShellWindowPreview inherits Window {
+    title: "Prism Window Previews";
+    in property <length> stage-width: 748px;
+    in property <length> panel-width: 700px;
+
+    width: root.stage-width;
+    height: 214px + 48px;
+    no-frame: true;
+    always-on-top: true;
+    background: #00000000;
+    default-font-family: Tokens.font-family;
+    default-font-size: Tokens.type-body;
+    default-font-weight: Tokens.weight-regular;
+
+    WindowPreview {
+        x: 24px;
+        y: 24px;
+        preview-max-width: root.panel-width;
+    }
+}

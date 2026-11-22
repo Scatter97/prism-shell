@@ -64,6 +64,8 @@ pub fn window_items(dock: &DockState, app_id: &str) -> Vec<WindowItem> {
             app_name: entry.definition.name.as_str().into(),
             icon_kind: icon_kind(entry.definition.icon).into(),
             minimized: window.minimized,
+            has_icon: false,
+            icon: slint::Image::default(),
         })
         .collect()
 }

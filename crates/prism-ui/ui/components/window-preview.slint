@@ -120,7 +120,16 @@ component WindowCard inherits Rectangle {
     accessible-role: button;
     accessible-label: root.item.title + ", " + root.item.app-name + (root.item.minimized ? ", minimized" : "");
 
-    PreviewThumbnail {
+    if UiState.preview-live-thumbnails : Rectangle {
+        x: 10px;
+        y: 10px;
+        width: 204px;
+        height: 92px;
+        border-radius: 9px;
+        background: #111827;
+    }
+
+    if !UiState.preview-live-thumbnails : PreviewThumbnail {
         x: 10px;
         y: 10px;
         kind: root.item.icon-kind;
@@ -146,7 +155,16 @@ component WindowCard inherits Rectangle {
         }
     }
 
-    AppGlyph {
+    if root.item.has-icon : Image {
+        x: 10px;
+        y: 112px;
+        width: 18px;
+        height: 18px;
+        source: root.item.icon;
+        image-fit: contain;
+    }
+
+    if !root.item.has-icon : AppGlyph {
         x: 10px;
         y: 112px;
         width: 18px;
@@ -185,9 +203,11 @@ component WindowCard inherits Rectangle {
         clicked => { UiState.window-activated(root.item.id); }
     }
 
+    // Kept outside the live-thumbnail rectangle: DWM draws thumbnails above
+    // Slint content, so a button over the thumbnail could not be clicked.
     Rectangle {
         x: parent.width - 30px;
-        y: 8px;
+        y: 130px;
         width: 22px;
         height: 22px;
         border-radius: 7px;
@@ -216,8 +236,11 @@ export component WindowPreview inherits Rectangle {
     in-out property <bool> hovered: preview-touch.has-hover;
     in property <bool> open: UiState.preview-open;
     in-out property <bool> present: false;
+    // The production host expands this to the monitor width so every DWM
+    // thumbnail stays aligned with its card and no scrolling is needed.
+    in property <length> preview-max-width: 724px;
 
-    width: Math.min(724px, 24px + UiState.preview-windows.length * 232px);
+    width: Math.min(root.preview-max-width, 24px + UiState.preview-windows.length * 232px);
     height: 214px;
     visible: root.present;
     border-radius: 16px;
@@ -271,7 +294,13 @@ export component WindowPreview inherits Rectangle {
         spacing: 8px;
         alignment: start;
 
-        AppGlyph {
+        if UiState.preview-windows.length > 0 && UiState.preview-windows[0].has-icon : Image {
+            width: 18px;
+            height: 18px;
+            source: UiState.preview-windows[0].icon;
+            image-fit: contain;
+        }
+        if UiState.preview-windows.length == 0 || !UiState.preview-windows[0].has-icon : AppGlyph {
             width: 18px;
             height: 18px;
             kind: UiState.preview-windows.length > 0 ? UiState.preview-windows[0].icon-kind : "generic";
