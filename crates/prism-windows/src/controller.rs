@@ -8,7 +8,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -57,6 +57,7 @@ struct PinnedApp {
 }
 
 struct WindowsShell {
+    self_weak: Weak<RefCell<WindowsShell>>,
     taskbar: ShellTaskbar,
     control_center: ShellControlCenter,
     launcher: ShellLauncher,
@@ -83,6 +84,10 @@ struct WindowsShell {
     taskbar_bounds: Option<PhysicalRect>,
     cc_bounds: Option<PhysicalRect>,
     launcher_bounds: Option<PhysicalRect>,
+    startup_started_at: Option<Instant>,
+    pending_cc_focus: bool,
+    pending_launcher_focus: bool,
+    fatal_error: Option<String>,
     visible_count: usize,
     hidden_count: usize,
     last_external_foreground: Option<u64>,
@@ -103,6 +108,7 @@ pub fn run_shell(config: PrismConfig) -> Result<(), Box<dyn Error>> {
         launcher,
         config,
     )));
+    shell.borrow_mut().self_weak = Rc::downgrade(&shell);
 
     wire_callbacks(&shell);
 
@@ -122,9 +128,24 @@ pub fn run_shell(config: PrismConfig) -> Result<(), Box<dyn Error>> {
         },
     );
 
+    // The taskbar HWND is created by winit during the first event-loop
+    // iteration, not by show(). Resolve it as soon as the loop starts.
+    let weak = Rc::downgrade(&shell);
+    slint::Timer::single_shot(Duration::ZERO, move || {
+        if let Some(shell) = weak.upgrade()
+            && let Ok(mut shell) = shell.try_borrow_mut()
+        {
+            shell.tick();
+        }
+    });
+
     slint::run_event_loop()?;
     shell.borrow_mut().shutdown();
     drop(timer);
+
+    if let Some(error) = shell.borrow().fatal_error.clone() {
+        return Err(error.into());
+    }
     Ok(())
 }
 
@@ -151,6 +172,7 @@ impl WindowsShell {
         let dock_geometry = layout::dock_rect(work, scale, 320.0);
 
         let mut shell = Self {
+            self_weak: Weak::new(),
             taskbar,
             control_center,
             launcher,
@@ -177,6 +199,10 @@ impl WindowsShell {
             taskbar_bounds: None,
             cc_bounds: None,
             launcher_bounds: None,
+            startup_started_at: None,
+            pending_cc_focus: false,
+            pending_launcher_focus: false,
+            fatal_error: None,
             visible_count: 0,
             hidden_count: 0,
             last_external_foreground: None,
@@ -190,12 +216,23 @@ impl WindowsShell {
     }
 
     fn start(&mut self) -> Result<(), Box<dyn Error>> {
-        // Set an initial logical size before creating the native window.
+        // Set an initial logical size before requesting the native window. The
+        // actual HWND is created by winit during the first event-loop iteration,
+        // so it is resolved and configured in `tick`, not here.
         let initial_stage = self.work.width as f32 / self.scale;
         self.taskbar.set_stage_width(initial_stage);
         self.taskbar.show()?;
-        let hwnd = host::hwnd_of(self.taskbar.window())?;
-        self.taskbar_hwnd = Some(hwnd);
+        self.startup_started_at = Some(Instant::now());
+        tracing::info!(
+            work = ?self.work,
+            scale = self.scale,
+            stage_width = self.taskbar.get_stage_width(),
+            "Prism Windows taskbar window requested"
+        );
+        Ok(())
+    }
+
+    fn finish_taskbar_start(&mut self, hwnd: HWND) {
         host::configure_taskbar(hwnd);
         host::set_taskbar_dock_rect(Some(self.dock_geometry));
         self.update_layout();
@@ -212,7 +249,48 @@ impl WindowsShell {
 
         self.install_event_hooks();
         self.refresh();
-        Ok(())
+        self.startup_started_at = None;
+    }
+
+    fn resolve_native_windows(&mut self) {
+        if self.taskbar_hwnd.is_none() {
+            match host::hwnd_of(self.taskbar.window()) {
+                Ok(hwnd) => {
+                    self.taskbar_hwnd = Some(hwnd);
+                    self.finish_taskbar_start(hwnd);
+                }
+                Err(error) => {
+                    if self
+                        .startup_started_at
+                        .is_some_and(|started| started.elapsed() > Duration::from_secs(5))
+                    {
+                        let message = format!("the taskbar window was not created: {error}");
+                        tracing::error!(%error, "taskbar HWND unavailable after startup timeout");
+                        self.fatal_error = Some(message);
+                        self.quit = true;
+                        slint::quit_event_loop().ok();
+                    }
+                }
+            }
+        }
+
+        if self.cc_visible && self.cc_hwnd.is_none() {
+            self.try_attach_control_center();
+        }
+        if self.launcher_visible && self.launcher_hwnd.is_none() {
+            self.try_attach_launcher();
+        }
+    }
+
+    fn schedule_tick(&self, delay: Duration) {
+        let Some(shell) = self.self_weak.upgrade() else {
+            return;
+        };
+        slint::Timer::single_shot(delay, move || {
+            if let Ok(mut shell) = shell.try_borrow_mut() {
+                shell.tick();
+            }
+        });
     }
 
     fn shutdown(&mut self) {
@@ -274,6 +352,10 @@ impl WindowsShell {
     }
 
     fn tick(&mut self) {
+        if self.quit {
+            return;
+        }
+        self.resolve_native_windows();
         if self.quit {
             return;
         }
@@ -522,13 +604,14 @@ impl WindowsShell {
                 layout::control_center_panel(work, self.dock_geometry, 384.0, panel_height, scale);
             host::set_cc_panel_rect(Some(panel));
             let window_rect = layout::inflate(panel, scale);
-            if self.cc_bounds != Some(window_rect) {
+            if self.cc_hwnd.is_some() && self.cc_bounds != Some(window_rect) {
                 if let Some(hwnd) = self.cc_hwnd
                     && let Err(error) = host::position_panel(hwnd, window_rect, false)
                 {
                     tracing::warn!(%error, "Control Center positioning failed");
+                } else {
+                    self.cc_bounds = Some(window_rect);
                 }
-                self.cc_bounds = Some(window_rect);
             }
         }
 
@@ -536,13 +619,14 @@ impl WindowsShell {
             let panel = layout::launcher_panel(work, self.dock_geometry, 360.0, 452.0, scale);
             host::set_launcher_panel_rect(Some(panel));
             let window_rect = layout::inflate(panel, scale);
-            if self.launcher_bounds != Some(window_rect) {
+            if self.launcher_hwnd.is_some() && self.launcher_bounds != Some(window_rect) {
                 if let Some(hwnd) = self.launcher_hwnd
                     && let Err(error) = host::position_panel(hwnd, window_rect, false)
                 {
                     tracing::warn!(%error, "launcher positioning failed");
+                } else {
+                    self.launcher_bounds = Some(window_rect);
                 }
-                self.launcher_bounds = Some(window_rect);
             }
         }
     }
@@ -589,11 +673,40 @@ impl WindowsShell {
         self.control_center
             .show()
             .map_err(|error| format!("Control Center window creation failed: {error}"))?;
-        let hwnd = host::hwnd_of(self.control_center.window())?;
+        self.cc_visible = true;
+        self.cc_hwnd = None;
+        self.cc_bounds = None;
+        self.pending_cc_focus = true;
+        self.try_attach_control_center();
+        self.schedule_tick(Duration::from_millis(16));
+        Ok(())
+    }
+
+    fn try_attach_control_center(&mut self) {
+        if !self.cc_visible || self.cc_hwnd.is_some() {
+            return;
+        }
+        let Ok(hwnd) = host::hwnd_of(self.control_center.window()) else {
+            return;
+        };
         host::configure_control_center(hwnd);
         self.cc_hwnd = Some(hwnd);
-        self.cc_visible = true;
-        Ok(())
+        self.cc_bounds = None;
+        self.update_layout();
+        self.focus_control_center_if_ready();
+    }
+
+    fn focus_control_center_if_ready(&mut self) {
+        if !self.pending_cc_focus {
+            return;
+        }
+        if let Some(hwnd) = self.cc_hwnd {
+            self.pending_cc_focus = false;
+            unsafe {
+                let _ = SetForegroundWindow(hwnd);
+            }
+            host::clear_deactivation_flags();
+        }
     }
 
     fn ensure_launcher_window(&mut self) -> Result<(), String> {
@@ -603,11 +716,40 @@ impl WindowsShell {
         self.launcher
             .show()
             .map_err(|error| format!("launcher window creation failed: {error}"))?;
-        let hwnd = host::hwnd_of(self.launcher.window())?;
+        self.launcher_visible = true;
+        self.launcher_hwnd = None;
+        self.launcher_bounds = None;
+        self.pending_launcher_focus = true;
+        self.try_attach_launcher();
+        self.schedule_tick(Duration::from_millis(16));
+        Ok(())
+    }
+
+    fn try_attach_launcher(&mut self) {
+        if !self.launcher_visible || self.launcher_hwnd.is_some() {
+            return;
+        }
+        let Ok(hwnd) = host::hwnd_of(self.launcher.window()) else {
+            return;
+        };
         host::configure_launcher(hwnd);
         self.launcher_hwnd = Some(hwnd);
-        self.launcher_visible = true;
-        Ok(())
+        self.launcher_bounds = None;
+        self.update_layout();
+        self.focus_launcher_if_ready();
+    }
+
+    fn focus_launcher_if_ready(&mut self) {
+        if !self.pending_launcher_focus {
+            return;
+        }
+        if let Some(hwnd) = self.launcher_hwnd {
+            self.pending_launcher_focus = false;
+            unsafe {
+                let _ = SetForegroundWindow(hwnd);
+            }
+            host::clear_deactivation_flags();
+        }
     }
 
     fn open_control_center(&mut self) {
@@ -622,11 +764,8 @@ impl WindowsShell {
         host::clear_deactivation_flags();
         self.apply();
         self.update_layout();
-        if let Some(hwnd) = self.cc_hwnd {
-            unsafe {
-                let _ = SetForegroundWindow(hwnd);
-            }
-        }
+        self.pending_cc_focus = true;
+        self.focus_control_center_if_ready();
         // The initial show can emit an inactive notification before the
         // explicit foreground request. Clear it after activation so the first
         // tick does not immediately close a freshly opened panel.
@@ -645,11 +784,8 @@ impl WindowsShell {
         host::clear_deactivation_flags();
         self.apply();
         self.update_layout();
-        if let Some(hwnd) = self.launcher_hwnd {
-            unsafe {
-                let _ = SetForegroundWindow(hwnd);
-            }
-        }
+        self.pending_launcher_focus = true;
+        self.focus_launcher_if_ready();
         host::clear_deactivation_flags();
     }
 
@@ -671,13 +807,15 @@ impl WindowsShell {
     }
 
     fn hide_cc_native(&mut self) {
+        let hide_failed = self.cc_visible && self.control_center.hide().is_err();
         if let Some(hwnd) = self.cc_hwnd.take()
-            && self.control_center.hide().is_err()
+            && hide_failed
         {
             host::hide_window(hwnd);
         }
         self.cc_visible = false;
         self.cc_bounds = None;
+        self.pending_cc_focus = false;
         host::set_cc_panel_rect(None);
     }
 
@@ -699,13 +837,15 @@ impl WindowsShell {
     }
 
     fn hide_launcher_native(&mut self) {
+        let hide_failed = self.launcher_visible && self.launcher.hide().is_err();
         if let Some(hwnd) = self.launcher_hwnd.take()
-            && self.launcher.hide().is_err()
+            && hide_failed
         {
             host::hide_window(hwnd);
         }
         self.launcher_visible = false;
         self.launcher_bounds = None;
+        self.pending_launcher_focus = false;
         host::set_launcher_panel_rect(None);
     }
 

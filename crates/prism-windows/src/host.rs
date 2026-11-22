@@ -47,7 +47,7 @@ pub fn hwnd_of(window: &slint::Window) -> Result<HWND, String> {
     let handle = window.window_handle();
     let raw = handle
         .window_handle()
-        .map_err(|error| format!("window handle unavailable: {error}"))?;
+        .map_err(|error| format!("window handle unavailable (window not created yet?): {error}"))?;
     match raw.as_raw() {
         RawWindowHandle::Win32(win32) => Ok(HWND(win32.hwnd.get() as *mut c_void)),
         _ => Err("the Slint window is not backed by a Win32 handle".to_owned()),

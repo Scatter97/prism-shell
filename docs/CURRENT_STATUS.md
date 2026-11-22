@@ -74,6 +74,8 @@ Both Windows binaries build with `cargo xwin` for `x86_64-pc-windows-msvc`:
   - Taskbar: full work-area-width topmost tool window, `WS_EX_NOACTIVATE`, `WM_MOUSEACTIVATE = MA_NOACTIVATE`, per-pixel click-through outside the visible dock (`WM_NCHITTEST`).
   - Control Center/launcher: topmost tool windows with transparent shadow margins, click-through margins, Escape/focus-loss close, real focus for search.
   - DWM dark mode, no-round native corners, no border; Slint draws the rounded material.
+  - HWND attachment waits for the first event-loop tick (winit creates windows asynchronously)
+    and fails visibly after a 5 s startup timeout.
   - Positions above the Windows taskbar using the monitor work area.
 - Real Control Center actions:
   - Quick tiles and connectivity links open native Windows Settings pages.

@@ -113,7 +113,8 @@ the Win32 modules are `#[cfg(windows)]`:
 
 - `host`: HWND styles (`WS_EX_TOOLWINDOW`, `WS_EX_TOPMOST`, taskbar `WS_EX_NOACTIVATE`), DWM
   corner/dark/border attributes, `WM_NCHITTEST` click-through, `WM_MOUSEACTIVATE`, work-area
-  positioning, panel subclassing.
+  positioning, panel subclassing. HWND attachment is deferred to the first event-loop tick because
+  winit creates the native window asynchronously; startup times out after 5 s with a visible error.
 - `window`: `EnumWindows` filtering (own process, invisible, cloaked, shell classes, tool/owned
   windows, zero-size), process path/identity, icon source, minimized/foreground facts.
 - `icons`: `SHGetFileInfoW` → `HICON` → RGBA → `slint::Image`, cached per app.
