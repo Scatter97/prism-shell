@@ -304,7 +304,8 @@ Accept the Microsoft SDK/CRT license terms before distributing builds.
 [cargo-xwin](https://github.com/rust-cross/cargo-xwin)
 
 **Status:** succeeded in this milestone (debug). `prism-shell.exe` and `prism-preview.exe` are
-PE32+ x86-64. Cross-compilation proves compile/link only, not runtime behavior.
+PE32+ x86-64 and linked with the static MSVC CRT (no Visual C++ Redistributable dependency).
+Cross-compilation proves compile/link only, not runtime behavior.
 
 ## 18. Windows 11 runtime testing and CI
 

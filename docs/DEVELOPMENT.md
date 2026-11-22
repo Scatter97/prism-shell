@@ -189,6 +189,11 @@ target/x86_64-pc-windows-msvc/debug/prism-preview.exe
 The milestone attempt and any errors are recorded in `docs/CURRENT_STATUS.md`. Cross-compiling
 proves the Rust/MSVC link path, not Windows runtime behavior.
 
+`.cargo/config.toml` enables `+crt-static` for the MSVC target. The debug link emits a harmless
+`LNK4099` warning because the Microsoft debug CRT PDB is not shipped with the xwin SDK; the
+resulting binary has no `VCRUNTIME140.dll`/`MSVCP` dependency. A release build avoids the debug
+PDB warning.
+
 `prism-shell.exe` in this milestone is a fail-safe bootstrap: it shows a native warning message
 box saying integration is unavailable and exits. It does not replace Explorer, hide the taskbar,
 modify the registry, auto-start, or run mock data as if it were real system state.

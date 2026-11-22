@@ -40,8 +40,8 @@ Executed results:
 - **Clippy:** `cargo clippy --workspace --all-targets` completed with no warnings or errors after
   cleanup.
 - **Windows cross-build:** `cargo xwin build --target x86_64-pc-windows-msvc -p prism-app --bins`
-  produced `prism-shell.exe` and `prism-preview.exe` (PE32+ x86-64). Cross-compilation proves the
-  toolchain/link path only.
+  produced `prism-shell.exe` and `prism-preview.exe` (PE32+ x86-64). Static CRT link succeeded; the
+  import table has no VC runtime DLL. Cross-compilation proves the toolchain/link path only.
 - **Windows runtime:** not executed. No `Tested on Windows` label applies to any feature.
 - **Automated UI snapshot matrix:** `scripts/test/ui-snapshots.sh` generated 14 UI-only PNGs at
   1920×1080, 1280×800, and 125%/150%/200% scale. All files were non-empty; dimensions were checked

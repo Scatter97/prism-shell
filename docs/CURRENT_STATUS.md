@@ -86,6 +86,8 @@ a real, interactive Linux preview of the intended V1 interface.
 - `cargo xwin build --target x86_64-pc-windows-msvc -p prism-app --bins`: **succeeded**.
   - `prism-shell.exe`: PE32+ x86-64, debug.
   - `prism-preview.exe`: PE32+ x86-64, debug.
+  - Static CRT (`+crt-static`); no VCRUNTIME/MSVCP runtime dependency. `prism-shell.exe` imports
+    only `kernel32`, `user32`, `ntdll`, and a core sync API set.
 - Linux visual captures: 1920×1080, 1280×800, 2560×1440 at 125%/150% scale, 1920×1080 at 200%
   stress scale; screenshots under `artifacts/screenshots/`.
 - `scripts/test/ui-snapshots.sh`: 14 automated UI-only captures at 100%, 125%, 150%, 200% and
