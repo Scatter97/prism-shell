@@ -1,3 +1,5 @@
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 //! Production shell bootstrap.
 //!
 //! This milestone deliberately does not implement Windows shell integration.
