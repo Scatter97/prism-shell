@@ -65,9 +65,18 @@ impl PreviewThumbnails {
             .iter()
             .copied()
             .enumerate()
-            .filter(|(_, target)| {
-                !target.minimized
-                    && unsafe { IsWindow(Some(HWND(target.hwnd as usize as *mut _))).as_bool() }
+            .filter(|(index, target)| {
+                if target.minimized
+                    || !unsafe { IsWindow(Some(HWND(target.hwnd as usize as *mut _))).as_bool() }
+                {
+                    return false;
+                }
+                // A very wide multi-window strip can overflow the monitor and
+                // become scrollable. Do not pin a thumbnail to a card that is
+                // currently offscreen; the card keeps its neutral placeholder.
+                let destination =
+                    layout::preview_thumbnail_destination(preview_window, *index, scale);
+                destination.x >= preview_window.x && destination.right() <= preview_window.right()
             })
             .collect();
 
