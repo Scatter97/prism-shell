@@ -140,14 +140,22 @@ pub fn hide_native_taskbars() -> Result<ReplacementMarker, String> {
 
     for taskbar in taskbars.iter().filter(|taskbar| taskbar.visible) {
         if !hide_taskbar(taskbar.hwnd) {
-            // Never leave a partially hidden desktop.
+            // Never leave a partially hidden desktop. Keep the marker if any
+            // restore call fails; the heartbeat is dropped by the caller, so
+            // the watchdog retries the recorded state after its timeout.
+            let mut restored_all = true;
             for other in taskbars.iter().filter(|other| other.visible) {
-                let _ = show_taskbar(other.hwnd);
+                if !show_taskbar(other.hwnd) {
+                    restored_all = false;
+                }
             }
-            clear_marker();
+            if restored_all {
+                clear_marker();
+            }
             return Err(format!(
-                "Windows did not hide a {} taskbar; restored all taskbars",
-                taskbar.kind.as_str()
+                "Windows did not hide a {} taskbar; restore attempted (marker {})",
+                taskbar.kind.as_str(),
+                if restored_all { "cleared" } else { "retained" }
             ));
         }
     }
