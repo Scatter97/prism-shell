@@ -17,7 +17,20 @@ component LauncherTile inherits Rectangle {
     accessible-role: button;
     accessible-label: "Open " + root.item.name;
 
-    AppGlyph {
+    if root.item.has-icon : Image {
+        width: 34px;
+        height: 34px;
+        x: (parent.width - self.width) / 2;
+        y: 12px;
+        source: root.item.icon;
+        image-fit: contain;
+        transform-scale-x: tile-touch.has-hover ? 106% : 100%;
+        transform-scale-y: tile-touch.has-hover ? 106% : 100%;
+        animate transform-scale-x { duration: 120ms; }
+        animate transform-scale-y { duration: 120ms; }
+    }
+
+    if !root.item.has-icon : AppGlyph {
         width: 34px;
         height: 34px;
         x: (parent.width - self.width) / 2;
@@ -257,7 +270,7 @@ export component Launcher inherits Rectangle {
             x: 18px;
             width: parent.width - 18px;
             height: parent.height;
-            text: "Preview launcher · the Windows Start menu is untouched";
+            text: UiState.launcher-footer-label;
             color: Tokens.text-tertiary;
             font-size: 9.5px;
             vertical-alignment: center;

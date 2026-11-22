@@ -24,6 +24,10 @@ fn state_dir() -> Option<PathBuf> {
 /// Install stderr and best-effort file logging. The returned guard must live
 /// for the process lifetime so buffered log lines are flushed.
 pub fn init(verbose: bool) -> Option<WorkerGuard> {
+    init_with_name(verbose, "prism-preview")
+}
+
+pub fn init_with_name(verbose: bool, file_name: &str) -> Option<WorkerGuard> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::new(if verbose {
             "debug"
@@ -38,7 +42,7 @@ pub fn init(verbose: bool) -> Option<WorkerGuard> {
 
     let file = state_dir().and_then(|directory| {
         std::fs::create_dir_all(&directory).ok()?;
-        let appender = tracing_appender::rolling::never(&directory, "prism-preview.log");
+        let appender = tracing_appender::rolling::never(&directory, format!("{file_name}.log"));
         let (writer, guard) = tracing_appender::non_blocking(appender);
         let layer = tracing_subscriber::fmt::layer()
             .with_writer(writer)

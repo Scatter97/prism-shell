@@ -268,6 +268,48 @@ impl DockState {
         }
     }
 
+    /// Register a window discovered by the platform, using the platform's real
+    /// stable window id (for Windows this is the HWND).
+    ///
+    /// Returns `false` when the application entry is not present; the caller
+    /// must ensure running applications exist in the dock first.
+    pub fn record_window_discovered(
+        &mut self,
+        app_id: &AppId,
+        window_id: WindowId,
+        title: impl Into<String>,
+        minimized: bool,
+    ) -> bool {
+        let Some(index) = self
+            .apps
+            .iter()
+            .position(|entry| &entry.definition.id == app_id)
+        else {
+            return false;
+        };
+        let title = title.into();
+        let entry = &mut self.apps[index];
+        if let Some(window) = entry
+            .windows
+            .iter_mut()
+            .find(|window| window.id == window_id)
+        {
+            window.title = title;
+            window.minimized = minimized;
+            return true;
+        }
+        self.open_seq += 1;
+        let open_seq = self.open_seq;
+        entry.windows.push(AppWindow {
+            id: window_id,
+            title,
+            minimized,
+            last_active_seq: 0,
+            open_seq,
+        });
+        true
+    }
+
     /// Applies a best-effort reconciliation when the platform reports a window
     /// that is already gone. Safe to call repeatedly.
     pub fn record_window_missing(&mut self, window_id: WindowId) {
@@ -427,6 +469,20 @@ mod tests {
         let entry = dock.app(&"files".into()).expect("pinned entry stays");
         assert!(entry.windows.is_empty());
         assert!(entry.definition.is_pinned());
+    }
+
+    #[test]
+    fn discovered_windows_keep_platform_ids_and_update_titles() {
+        let mut dock = DockState::new(definitions());
+        let id = WindowId::new(4242);
+        assert!(dock.record_window_discovered(&"browser".into(), id, "First", false));
+        assert!(dock.record_window_discovered(&"browser".into(), id, "Renamed", true));
+        let windows = dock.windows_for(&"browser".into());
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0].id, id);
+        assert_eq!(windows[0].title, "Renamed");
+        assert!(windows[0].minimized);
+        assert!(!dock.record_window_discovered(&"missing".into(), id, "x", false));
     }
 
     #[test]

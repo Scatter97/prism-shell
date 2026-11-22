@@ -21,6 +21,8 @@ pub fn app_item(entry: &AppEntry, active_app: Option<&prism_core::AppId>, slot: 
         window_count: i32::try_from(entry.window_count()).unwrap_or(i32::MAX),
         pinned: entry.definition.is_pinned(),
         slot: i32::try_from(slot).unwrap_or(i32::MAX),
+        has_icon: false,
+        icon: slint::Image::default(),
     }
 }
 
@@ -197,17 +199,21 @@ fn toggle_copy(id: ToggleId, snapshot: &SystemSnapshot) -> (&'static str, String
             };
             ("Bluetooth", detail)
         }
-        ToggleId::Focus => (
-            "Focus",
-            if snapshot
-                .toggle(ToggleId::Focus)
-                .is_some_and(|toggle| toggle.active)
-            {
-                "Notifications silenced".to_owned()
+        ToggleId::Focus => {
+            let toggle = snapshot.toggle(ToggleId::Focus);
+            if !toggle.is_some_and(|toggle| toggle.capability.can_attempt()) {
+                ("Focus", "Windows settings".to_owned())
             } else {
-                "Notifications allowed".to_owned()
-            },
-        ),
+                (
+                    "Focus",
+                    if toggle.is_some_and(|toggle| toggle.active) {
+                        "Notifications silenced".to_owned()
+                    } else {
+                        "Notifications allowed".to_owned()
+                    },
+                )
+            }
+        }
         ToggleId::NightLight => ("Night light", "Windows settings".to_owned()),
     }
 }

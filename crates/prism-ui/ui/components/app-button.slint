@@ -28,7 +28,17 @@ export component AppButton inherits Rectangle {
         animate opacity { duration: Tokens.motion-fast; }
     }
 
-    AppGlyph {
+    if root.item.has-icon : Image {
+        width: root.hovered ? 31.5px : 30px;
+        height: self.width;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2 - 2px;
+        source: root.item.icon;
+        image-fit: contain;
+        animate width { duration: 130ms; }
+    }
+
+    if !root.item.has-icon : AppGlyph {
         width: root.hovered ? 31.5px : 30px;
         height: self.width;
         x: (parent.width - self.width) / 2;

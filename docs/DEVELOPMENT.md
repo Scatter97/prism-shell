@@ -1,7 +1,7 @@
 # Development Guide — Prism Shell
 
-Status: Linux development workflow and Windows cross-build workflow are implemented. Windows
-runtime validation is not yet performed.
+Status: Linux development workflow and Windows cross-build workflow are implemented. The native
+Windows shell is cross-compiled but has not run on Windows; runtime validation is pending.
 
 ## 1. Toolchain
 
@@ -29,7 +29,8 @@ crates/
   prism-core/              portable domain/state, no I/O, unsafe forbidden
   prism-platform/          platform traits + explicit mock backend
   prism-ui/                Slint UI, design tokens, assets, view mapping
-  prism-app/               preview + production bootstrap, config, logging, controller
+  prism-windows/           native Windows host/tracker/icons/platform + portable tests
+  prism-app/               preview + production entry point, config, logging, controller
 assets/
   fonts/                   Inter Regular/Medium/SemiBold + OFL
   icons/status/            Lucide status icons
@@ -177,13 +178,16 @@ freeze the environment. Visual review is manual; state tests are deterministic.
 rustup target add x86_64-pc-windows-msvc
 cargo install cargo-xwin --locked
 cargo xwin build --target x86_64-pc-windows-msvc -p prism-app --bins
+cargo xwin build --release --target x86_64-pc-windows-msvc -p prism-app --bins
 ```
 
-Outputs (debug):
+Outputs:
 
 ```
 target/x86_64-pc-windows-msvc/debug/prism-shell.exe
 target/x86_64-pc-windows-msvc/debug/prism-preview.exe
+target/x86_64-pc-windows-msvc/release/prism-shell.exe
+target/x86_64-pc-windows-msvc/release/prism-preview.exe
 ```
 
 The milestone attempt and any errors are recorded in `docs/CURRENT_STATUS.md`. Cross-compiling
@@ -191,26 +195,42 @@ proves the Rust/MSVC link path, not Windows runtime behavior.
 
 `.cargo/config.toml` enables `+crt-static` for the MSVC target. The debug link emits a harmless
 `LNK4099` warning because the Microsoft debug CRT PDB is not shipped with the xwin SDK; the
-resulting binary has no `VCRUNTIME140.dll`/`MSVCP` dependency. A release build avoids the debug
+resulting binary has no `VCRUNTIME140.dll`/`MSVCP` dependency. The release build avoids the debug
 PDB warning.
 
-`prism-shell.exe` in this milestone is a fail-safe bootstrap: it shows a native warning message
-box saying integration is unavailable and exits. It does not replace Explorer, hide the taskbar,
-modify the registry, auto-start, or run mock data as if it were real system state.
+`prism-shell.exe` is the native Windows shell. It creates three real Slint windows (taskbar,
+Control Center, launcher), enumerates real top-level windows, extracts real shell icons, and
+launches/activates real applications. It runs alongside Explorer and does not replace Explorer,
+hide the Windows taskbar, modify the registry, auto-start, or reserve work area. System controls
+without an implementation (audio, radios, brightness, media) are shown as unavailable.
 
-## 9. Windows runtime workflow (next milestone)
+`prism-preview.exe` / `prism-preview` remains the mock development preview. It is never used as
+the production backend.
 
-1. Use a disposable Windows 11 x64 VM for the first run.
-2. Install the Visual Studio Build Tools/Windows SDK if building natively.
-3. Run `prism-preview.exe --scenario laptop --open-cc` only as an explicit UI preview.
-4. Validate the real shell surface in a staged/test harness before any taskbar coexistence work.
-5. Keep `explorer.exe` running and the original taskbar accessible at all times in V1.
-6. Use `PrintWindow`/DWM thumbnail tests only after the transparent window host is validated.
+## 9. Windows runtime workflow
+
+The runtime status is **Unverified**. Use `docs/WINDOWS_VALIDATION.md` as the executable checklist
+and `scripts/test/windows-smoke.ps1` for a non-destructive first launch.
+
+1. Use a disposable Windows 11 x64 VM (or spare physical machine) with Explorer as the normal
+   shell, a single primary monitor at 100%, and no administrator launch.
+2. Copy `prism-shell.exe` and `prism-preview.exe` from the release cross-build.
+3. Optionally run `powershell -ExecutionPolicy Bypass -File scripts/test/windows-smoke.ps1
+   -Exe .\prism-shell.exe`. It starts Prism, confirms Explorer is still alive, captures the primary
+   screen, copies `%LOCALAPPDATA%\Prism\logs\prism-shell.log`, and stops only Prism.
+4. Complete the manual checklist (transparency, click-through, activation, focus, DPI, grouping,
+   Control Center, recovery). Attach screenshots and the log.
+5. Exit through the Control Center, then confirm Explorer and the Windows taskbar are unchanged.
+6. Only after the overlay/focus/recovery fundamentals pass should work begin on AppBar work-area
+   reservation, multi-monitor, or deeper shell integration.
+
+Keep `explorer.exe` running and the original taskbar accessible at all times in V1. Kill Prism from
+Task Manager if a surface blocks the desktop; no system state is changed by doing so.
 
 A native `windows-latest` CI job may build/test/fmt/clippy, but it cannot validate DWM
-transparency, Explorer, the taskbar, Core Audio endpoints, radios, or notification consent.
-`.github/workflows/ci.yml` contains the proposed job definitions. It has not been executed in this
-environment (no remote/push authorization).
+transparency, Explorer focus rules, the taskbar, Core Audio endpoints, radios, or notification
+consent. `.github/workflows/ci.yml` contains proposed job definitions. It has not been executed in
+this environment (no remote/push authorization).
 
 ## 10. Common issues
 

@@ -2,11 +2,12 @@
 
 A native Windows 11 floating taskbar/dock and Control Center, written in Rust.
 
-> **Status: development preview.** The Windows integration is not implemented yet. This milestone
-> delivers the architecture, a Linux-previewable interactive taskbar and Control Center, a
-> platform abstraction, and a successful Windows MSVC cross-build. It does **not** replace
-> Explorer, hide the Windows taskbar, modify the registry, or claim that mocks are real Windows
-> system state.
+> **Status: Phase 3A native Windows shell implemented, successfully cross-compiled, not yet run on
+> Windows.** The Linux preview is still the only runtime-tested UI. The Windows executable adds a
+> real overlay taskbar/Control Center/launcher, real window tracking, icons, and activation, but
+> every Windows runtime behavior is **unverified** until the checklist in
+> `docs/WINDOWS_VALIDATION.md` is executed. It does **not** replace Explorer, hide the Windows
+> taskbar, modify the registry, or present mock data as real Windows system state.
 
 ## What you can run today
 
@@ -29,6 +30,18 @@ It includes:
 
 The preview is visibly labeled **DEVELOPMENT PREVIEW · MOCK DATA**. Simulated settings/power/media
 actions say "preview only" and never touch the host system.
+
+The Windows binary is a separate, real backend:
+
+```bash
+cargo xwin build --release --target x86_64-pc-windows-msvc -p prism-app --bin prism-shell
+```
+
+It creates a floating taskbar, Control Center, and launcher as native windows alongside Explorer,
+with real top-level window enumeration, executable-based grouping, shell icons, launch/activation,
+clock, battery, native Settings shortcuts, and workstation lock. Audio, Wi-Fi/Bluetooth toggles,
+brightness, and media are shown as unavailable rather than faked. See
+`docs/WINDOWS_VALIDATION.md` before running it; it has not been validated on Windows 11 yet.
 
 ## Screenshots
 
@@ -58,9 +71,10 @@ cargo install cargo-xwin --locked
 cargo xwin build --target x86_64-pc-windows-msvc -p prism-app --bins
 ```
 
-`prism-shell.exe` is currently a fail-safe bootstrap: it warns that Windows integration is not
-available and exits, without changing the shell. `prism-preview.exe` is the explicit development
-preview and still uses mock data.
+`prism-shell.exe` is the native Windows shell. It runs alongside Explorer and makes no shell
+modification. `prism-preview.exe` is the explicit development preview and still uses mock data.
+Cross-compilation is not runtime validation; see `docs/CURRENT_STATUS.md` for the exact evidence
+and remaining unknowns.
 
 ## Safety
 
@@ -74,9 +88,10 @@ V1 runs alongside Explorer. It does not:
 - inject into processes or use undocumented Explorer hooks;
 - require administrator privileges.
 
-Taskbar hiding, AppBar work-area reservation, tray replication, notification interception, and
-real system controls are **deferred** until validated on Windows 11. See
-`docs/WINDOWS_API_RESEARCH.md` and `docs/DECISIONS.md`.
+Taskbar hiding, AppBar work-area reservation, multi-monitor surfaces, tray replication,
+notification interception, and audio/radio/brightness/media controls are **deferred** until the
+current overlay is validated on Windows 11. See `docs/WINDOWS_API_RESEARCH.md` and
+`docs/DECISIONS.md`.
 
 ## Documentation
 
@@ -86,6 +101,7 @@ real system controls are **deferred** until validated on Windows 11. See
 - [UI framework evaluation](docs/UI_FRAMEWORK_EVALUATION.md)
 - [Development guide](docs/DEVELOPMENT.md)
 - [Testing](docs/TESTING.md)
+- [Windows 11 validation checklist](docs/WINDOWS_VALIDATION.md)
 - [Current status](docs/CURRENT_STATUS.md)
 - [Decisions](docs/DECISIONS.md)
 

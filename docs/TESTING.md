@@ -1,8 +1,9 @@
 # Testing — Prism Shell
 
-Status: portable unit tests, Linux visual tests, virtual-display interaction tests, and a Windows
-MSVC cross-build were executed. Native Windows runtime integration was **not** executed and must
-not be reported as passing.
+Status: portable unit tests, Linux visual tests, virtual-display interaction tests, and Windows
+MSVC debug/release cross-builds were executed. Native Windows runtime integration was **not**
+executed and must not be reported as passing. The checklist is in
+`docs/WINDOWS_VALIDATION.md`.
 
 Last update: 2026-11-21.
 
@@ -14,10 +15,11 @@ Last update: 2026-11-21.
 | Mock platform | Deterministic snapshots, pending/error reconciliation, media transitions, scenario integrity | `prism-platform` tests |
 | View mapping | Icon/copy mapping, launcher filtering, durations, audio default | `prism-ui/src/model.rs` tests |
 | App support | CLI parsing, config fallback, screenshot path validation, toggle-id parsing | `prism-app` tests |
+| Windows geometry/identity | DPI physical rects, panel clamping, executable normalization, friendly names, window eligibility, grouping | `prism-windows` portable tests |
 | Visual | Layout, typography, spacing, overflow, DPI behavior, state presentation | Xvfb screenshots + manual review |
 | Interaction | Real pointer/keyboard state transitions | `xdotool` against Xvfb |
-| Windows compile | MSVC target, link, PE output | `cargo xwin` |
-| Windows runtime | Explorer/DWM/taskbar/Core Audio/radios/media/recovery | **Not run** |
+| Windows compile | MSVC target, link, PE output, static CRT | `cargo xwin` |
+| Windows runtime | HWND styles, DWM alpha, focus/z-order, Explorer coexistence, activation, recovery | **Not run** |
 
 ## 2. Commands and results
 
@@ -26,34 +28,37 @@ cargo fmt --all -- --check
 cargo test --workspace
 cargo clippy --workspace --all-targets
 cargo xwin build --target x86_64-pc-windows-msvc -p prism-app --bins
+cargo xwin build --release --target x86_64-pc-windows-msvc -p prism-app --bins
 ```
 
 Executed results:
 
 - **Formatting:** `cargo fmt --all -- --check` passed.
-- **Tests:** 53 passed, 0 failed, 0 ignored:
-  - `prism-core`: 27
+- **Tests:** 72 passed, 0 failed, 0 ignored:
+  - `prism-core`: 28
   - `prism-platform`: 9
   - `prism-app`: 13
   - `prism-ui`: 4
+  - `prism-windows`: 18 portable tests (layout, naming, eligibility, grouping)
   - binaries/doc tests: 0
 - **Clippy:** `cargo clippy --workspace --all-targets` completed with no warnings or errors after
   cleanup.
-- **Windows cross-build:** `cargo xwin build --target x86_64-pc-windows-msvc -p prism-app --bins`
-  produced `prism-shell.exe` and `prism-preview.exe` (PE32+ x86-64). Static CRT link succeeded; the
-  import table has no VC runtime DLL. The release cross-build also succeeded (`prism-shell.exe`
-  211 KB, `prism-preview.exe` 14 MB). The only build noise is benign `LNK4099` warnings from the
-  debug CRT PDB references in the xwin SDK. Cross-compilation proves the toolchain/link path only.
-- **Windows runtime:** not executed. No `Tested on Windows` label applies to any feature.
+- **Windows debug cross-build:** `cargo xwin build --target x86_64-pc-windows-msvc -p prism-app
+  --bins` produced `prism-shell.exe` and `prism-preview.exe` (PE32+ x86-64). Static CRT link
+  succeeded; the import table has no VC runtime DLL. The only noise is benign `LNK4099` warnings
+  from debug CRT PDB references in the xwin SDK.
+- **Windows release cross-build:** `cargo xwin build --release --target
+  x86_64-pc-windows-msvc -p prism-app --bins` produced a 14 MB GUI-subsystem `prism-shell.exe` and
+  a 15 MB `prism-preview.exe`, with no VC runtime import. This proves the toolchain/link path only.
+- **Windows runtime:** not executed. No `Tested on Windows` label applies to any feature. The
+  runtime checklist and smoke script exist but have not run.
 - **CI:** `.github/workflows/ci.yml` exists as a proposed Linux/Windows build+test workflow, but it
   has not run (no remote/push authorization). Do not report it as passing.
 - **Automated UI snapshot matrix:** `scripts/test/ui-snapshots.sh` generated 14 UI-only PNGs at
   1920×1080, 1280×800, and 125%/150%/200% scale. All files were non-empty; dimensions were checked
   with `file` (1920×1080 for scale checks, 1280×800 for the small canvas). A separate 3840×2160
-  capture verified the full UI at 200% on a 4K logical canvas.
-
-The Windows binaries are debug builds. A release cross-build and native `windows-latest` CI job
-remain future work.
+  capture verified the full UI at 200% on a 4K logical canvas. Re-run after the Phase 3A UI changes
+  passed.
 
 ## 3. Domain coverage
 
@@ -83,6 +88,19 @@ remain future work.
 `prism-app` tests cover CLI parsing (inline/separate values, ranges, unknown options, scale,
 artifact flags), config fallback, screenshot path logic, and toggle ids. `prism-ui` tests cover
 copy/mapping/filtering.
+
+`prism-windows` portable tests cover:
+
+- Taskbar window/dock physical geometry at 100% and 150%, including the 14 px bottom gap.
+- Control Center right alignment, launcher left alignment, and panel gaps.
+- Work-area clamping for small screens and negative-origin monitors.
+- Shadow-margin inflation and the shared Slint dock-width formula.
+- Executable path normalization, friendly names, and pinned-app matching.
+- Window eligibility (tool/owned/cloaked/zero-size/minimized), UWP-host separation, and grouping
+  by normalized executable.
+- `DockState::record_window_discovered` adding/merging tracked windows.
+
+The Win32 modules themselves are only compile-checked. They have no Windows unit tests yet.
 
 ## 4. Linux visual and interaction tests
 
@@ -165,41 +183,38 @@ so images vary by capture time. `--scale 1` is required for a 1:1 logical PNG.
 
 Do not claim these as complete:
 
-- Real Windows 11 runtime: transparent/frameless window, DWM backdrop, focus/z-order,
-  non-activating taskbar.
-- Win32 window enumeration, AUMID/UWP grouping, activation/minimization, elevated/UIPI targets.
-- Explorer/taskbar coexistence, AppBar reservation, fullscreen/games, Explorer restart.
+- Windows 11 runtime for anything in `prism-shell.exe`: window creation, HWND styles, DWM alpha,
+  frameless/transparent appearance, focus/z-order, non-activating taskbar, click-through.
+- Win32 `EnumWindows`/`SetWinEventHook` behavior, AUMID/UWP identity, icon extraction,
+  activation/minimization, elevated/UIPI targets.
+- Explorer/taskbar coexistence, process-death recovery, lock/sleep/resume, Explorer restart.
 - Taskbar hiding/restoration (deliberately not implemented).
+- Primary-monitor positioning at real 100/125/150/200% DPI, mixed-DPI, hotplug, RDP.
 - Core Audio, default-device changes, radio/Wi-Fi/BT toggles, location consent.
 - Brightness WMI/DDC-CI and monitor safety.
 - GSMTC media sessions in an unpackaged binary.
 - Tray replication and notification interception (deferred/blocked).
-- Mixed-DPI multi-monitor, RDP, portrait, hotplug, primary-display changes.
 - Narrator/AccessKit verification; full keyboard tab navigation; high-contrast mode.
 - Performance baselines, memory/GPU measurements, 8-hour soak, 100+ windows.
-- Installer, auto-start, update/recovery executable, code signing.
-- Windows release build.
+- Installer, auto-start, update/recovery executable, code signing, single-instance guard.
 
-## 6. Windows 11 validation plan (Phase 3+)
+## 6. Windows 11 validation plan
 
-Run on a disposable Windows 11 VM first, normal user, Explorer available:
+The executable checklist is `docs/WINDOWS_VALIDATION.md`; `scripts/test/windows-smoke.ps1` is a
+non-destructive launch/screenshot/log harness. Neither has run. Start on a disposable Windows 11
+x64 VM, normal user, Explorer as the normal shell, single monitor at 100%, then:
 
-1. Launch the fail-safe `prism-shell.exe`; confirm the warning appears and no shell state changes.
-2. Build/run the preview explicitly; verify DPI and rendering at 100/125/150/200%.
-3. Implement a minimal taskbar/CC host with documented HWND/DWM styles; verify transparency,
-   non-activating input, z-order, and focus with a second monitor and mixed DPI.
-4. Enumerate windows and compare grouping with Task View/Alt+Tab for Win32, UWP, packaged,
-   multi-window, minimized, owned, tool, elevated, cloaked/virtual desktop.
-5. Test click/activation/minimize/chooser and `FlashWindowEx` failure fallback.
-6. Test Core Audio read/write/notifications, no-endpoint and exclusive-mode cases; no
-   `IPolicyConfig`.
-7. Test radio state and toggles in the unpackaged binary; record consent/policy outcomes.
-8. Test GSMTC in the unpackaged binary; hide/disable unsupported controls.
-9. Test brightness only on a spare monitor/laptop with opt-in; no startup DDC/CI probe.
-10. Test DWM previews for minimized/UWP/protected/occluded windows; no capture persistence.
-11. Test recovery only after an independent recovery tool exists; never auto-start/hide by
-    default.
-12. Measure startup, idle CPU/GPU, RSS, open latency, and 100+ window behavior.
+1. Confirm `prism-shell.exe` starts and Explorer remains visible/usable.
+2. Verify transparency/frameless rendering and the dock work-area position.
+3. Verify click-through outside the dock, non-activation, and real app activation/minimize/restore.
+4. Compare enumeration/grouping with Task View/Alt+Tab for Win32, UWP, multi-window, minimized,
+   owned, tool, elevated, cloaked/virtual-desktop windows.
+5. Verify Control Center focus-loss/Escape close, real battery/Settings/lock/exit, and no fake
+   unsupported controls.
+6. Test 100/125/150/200%, monitor changes, lock/sleep/resume, Explorer restart, and Prism kill.
+7. Only after those pass: consider AppBar work-area reservation, multi-monitor surfaces,
+   Core Audio, radios/WLAN, brightness, GSMTC, thumbnails, tray, and a recovery executable. Each
+   subsystem needs its own API research and explicit approval.
 
 ## 7. Reproducibility
 

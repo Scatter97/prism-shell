@@ -537,6 +537,7 @@ export component ControlCenter inherits Rectangle {
                             glyph: UiState.wifi-on ? Icons.wifi : Icons.wifi-off;
                             title: "Wi-Fi";
                             detail: UiState.wifi-on ? UiState.wifi-name + " · " + UiState.wifi-detail
+                                : UiState.wifi-capability == "unsupported" ? "Windows settings"
                                 : UiState.wifi-capability == "unavailable" ? "No wireless adapter"
                                 : "Off · use the quick control to connect";
                             tint: UiState.wifi-on ? Tokens.accent : Tokens.text-tertiary;
@@ -555,6 +556,7 @@ export component ControlCenter inherits Rectangle {
                             glyph: UiState.bluetooth-on ? Icons.bluetooth : Icons.bluetooth-off;
                             title: "Bluetooth";
                             detail: UiState.bluetooth-on ? UiState.bluetooth-name + " · " + UiState.bluetooth-detail
+                                : UiState.bluetooth-capability == "unsupported" ? "Windows settings"
                                 : UiState.bluetooth-capability == "permission" ? "Permission required"
                                 : UiState.bluetooth-capability == "unavailable" ? "No Bluetooth radio"
                                 : "Off";
@@ -674,29 +676,35 @@ export component ControlCenter inherits Rectangle {
                 spacing: 8px;
 
                 UtilityButton {
-                    width: (parent.width - 24px) / 4;
+                    width: UiState.show-unsafe-power ? (parent.width - 24px) / 4 : (parent.width - 16px) / 3;
                     glyph: Icons.settings;
                     label: "Settings";
                     clicked => { UiState.open-settings("home"); }
                 }
                 UtilityButton {
-                    width: (parent.width - 24px) / 4;
+                    width: UiState.show-unsafe-power ? (parent.width - 24px) / 4 : (parent.width - 16px) / 3;
                     glyph: Icons.lock;
                     label: "Lock";
                     clicked => { UiState.power-requested("lock"); }
                 }
-                UtilityButton {
+                if UiState.show-unsafe-power : UtilityButton {
                     width: (parent.width - 24px) / 4;
                     glyph: Icons.night-light;
                     label: "Sleep";
                     clicked => { UiState.power-requested("sleep"); }
                 }
-                UtilityButton {
+                if UiState.show-unsafe-power : UtilityButton {
                     width: (parent.width - 24px) / 4;
                     glyph: Icons.power;
                     label: "Power";
                     critical: true;
                     clicked => { UiState.power-requested("power"); }
+                }
+                if !UiState.show-unsafe-power : UtilityButton {
+                    width: (parent.width - 16px) / 3;
+                    glyph: Icons.power;
+                    label: "Exit";
+                    clicked => { UiState.quit-shell(); }
                 }
             }
 
@@ -724,7 +732,7 @@ export component ControlCenter inherits Rectangle {
                     background: Tokens.warning;
                 }
                 Text {
-                    text: "Preview backend · no system changes";
+                    text: UiState.footer-label;
                     color: Tokens.text-tertiary;
                     font-size: 9px;
                     vertical-alignment: center;

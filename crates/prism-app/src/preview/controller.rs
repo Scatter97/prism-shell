@@ -91,6 +91,13 @@ impl PreviewController {
         state.set_development_preview(true);
         state.set_platform_label("Linux preview · mock data".into());
         state.set_version_label(env!("CARGO_PKG_VERSION").into());
+        state.set_footer_label("Preview backend · no system changes".into());
+        state.set_launcher_footer_label(
+            "Preview launcher · the Windows Start menu is untouched".into(),
+        );
+        state.set_show_unsafe_power(true);
+        state.set_show_audio_status(true);
+        state.set_show_wifi_status(true);
         state.set_scenarios(ModelRc::new(VecModel::from(scenario_items())));
         state.set_scenario(scenario.id().into());
         state.set_reduced_motion(reduced_motion);

@@ -1,0 +1,43 @@
+import { Tokens } from "tokens.slint";
+import { UiState } from "state.slint";
+import { ControlCenter } from "components/control-center.slint";
+
+// Production Control Center window. Transparent padding gives the panel's
+// shadow room; the native host positions the panel above the taskbar.
+export component ShellControlCenter inherits Window {
+    title: "Prism Control Center";
+    in property <length> panel-max-height: 800px;
+    out property <length> panel-height: cc.height;
+
+    width: Tokens.panel-width + 48px;
+    height: cc.height + 48px;
+    no-frame: true;
+    always-on-top: true;
+    background: #00000000;
+    default-font-family: Tokens.font-family;
+    default-font-size: Tokens.type-body;
+    default-font-weight: Tokens.weight-regular;
+
+    key-root := FocusScope {
+        width: parent.width;
+        height: parent.height;
+
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                UiState.close-control-center();
+                return accept;
+            }
+            reject
+        }
+
+        cc := ControlCenter {
+            x: 24px;
+            y: 24px;
+            panel-max-height: root.panel-max-height;
+        }
+    }
+
+    init => {
+        key-root.focus();
+    }
+}

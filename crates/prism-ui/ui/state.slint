@@ -8,6 +8,11 @@ export global UiState {
     in-out property <bool> development-preview: true;
     in-out property <string> platform-label: "Linux preview · mock data";
     in-out property <string> version-label: "v0.1.0";
+    in-out property <string> footer-label: "Preview backend · no system changes";
+    in-out property <string> launcher-footer-label: "Preview launcher · the Windows Start menu is untouched";
+    in-out property <bool> show-unsafe-power: true;
+    in-out property <bool> show-audio-status: true;
+    in-out property <bool> show-wifi-status: true;
 
     // Dock
     in-out property <[AppItem]> apps: [];
@@ -127,4 +132,5 @@ export global UiState {
     callback simulate-audio-loss();
     callback dismiss-toast();
     callback quit-preview();
+    callback quit-shell();
 }

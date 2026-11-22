@@ -3479,13 +3479,13 @@ dependencies = [
  "prism-core",
  "prism-platform",
  "prism-ui",
+ "prism-windows",
  "serde_json",
  "slint",
  "thiserror 2.0.21",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
- "windows",
 ]
 
 [[package]]
@@ -3514,6 +3514,20 @@ dependencies = [
  "prism-core",
  "slint",
  "slint-build",
+]
+
+[[package]]
+name = "prism-windows"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "prism-core",
+ "prism-platform",
+ "prism-ui",
+ "raw-window-handle",
+ "slint",
+ "tracing",
+ "windows",
 ]
 
 [[package]]
@@ -4056,6 +4070,7 @@ dependencies = [
  "i-slint-renderer-software",
  "once_cell",
  "pin-weak",
+ "raw-window-handle",
  "slint-macros",
  "vtable",
 ]

@@ -1,0 +1,26 @@
+import { Tokens } from "tokens.slint";
+import { UiState } from "state.slint";
+import { Taskbar } from "components/taskbar.slint";
+
+// Production taskbar window. The native host gives this window the full work
+// area width and positions it above the Windows taskbar. The Slint surface is
+// centered and the host makes the transparent side areas click-through.
+export component ShellTaskbar inherits Window {
+    title: "Prism Taskbar";
+    in property <length> stage-width: 1200px;
+
+    width: root.stage-width;
+    height: 100px;
+    no-frame: true;
+    always-on-top: true;
+    background: #00000000;
+    default-font-family: Tokens.font-family;
+    default-font-size: Tokens.type-body;
+    default-font-weight: Tokens.weight-regular;
+
+    Taskbar {
+        x: (parent.width - self.width) / 2;
+        y: 24px;
+        available-width: parent.width;
+    }
+}

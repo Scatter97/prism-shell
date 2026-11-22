@@ -59,13 +59,15 @@ z-order still need Windows validation.
 
 ## D-005 — Explicit mock backend; fail-safe Windows bootstrap
 
-**Status: Implemented; Tested on Linux.**
+**Status: Mock backend Implemented/Tested on Linux. The fail-safe bootstrap is superseded by
+D-021; the no-silent-mock principle remains.**
 
-`MockPlatform` owns every preview system value and labels simulated actions. `prism-shell.exe`
-does not run mock data as production: on Windows it shows a native "integration not available"
-message and exits; on Linux it prints instructions. No silent mock substitution.
+`MockPlatform` owns every preview system value and labels simulated actions. The original
+`prism-shell.exe` milestone did not run mock data as production: it showed a native "integration
+not available" message and exited. Phase 3A replaces that entry point with the real native shell;
+`prism-preview` remains explicitly mock-only, and the Windows path never falls back to it.
 
-**Why:** honest behavior, safe default, and a clean seam for Phase 3.
+**Why:** honest behavior, safe default, and a clean seam for the native backend.
 
 ## D-006 — No taskbar hiding, no Explorer modification, no auto-start in V1
 
@@ -198,3 +200,28 @@ Use Cargo workspace + `cargo-xwin` for the MSVC cross-build and native Windows C
 cross-compilation as compile/link evidence only. Validate Explorer/DWM/taskbar/Core Audio/radios/
 media/recovery on a real Windows 11 VM or physical machine. Wine may supplement pure-logic tests
 but cannot validate shell behavior. Do not push or deploy from this environment.
+
+## D-021 — Phase 3A native host: overlay surfaces, no shell takeover
+
+**Status: Implemented; successfully cross-compiled; Windows runtime Unverified.**
+
+Build the first native Windows shell as three ordinary top-level Slint windows hosted by documented
+Win32/DWM calls:
+
+- A full-work-area-width, 100-logical-px taskbar window with a centered dock, `WS_EX_TOOLWINDOW |
+  WS_EX_TOPMOST | WS_EX_NOACTIVATE`, `MA_NOACTIVATE`, and `HTTRANSPARENT` outside the dock.
+- Separate Control Center and launcher tool windows with transparent shadow margins, real focus,
+  Escape/focus-loss dismissal, and click-through margins.
+- Real `EnumWindows` filtering, per-executable grouping, `SHGetFileInfoW` icons, and
+  `ShowWindow`/`SetForegroundWindow` activation with `FlashWindowEx` fallback.
+- A deliberately limited Control Center: real clock/battery/Settings/lock/exit; audio, radios,
+  brightness, and media are unavailable, not simulated.
+
+Do **not** add AppBar work-area reservation, taskbar hiding, Explorer replacement, registry
+changes, auto-start, or an independent recovery executable in this phase. The dock is a primary-
+monitor overlay and may cover the bottom of maximized windows. Deeper integration requires the
+recovery prerequisites in D-006 and real Windows validation first.
+
+This keeps the shell useful and safe without implying that an overlay is a complete taskbar
+replacement. Portable layout/filtering modules are unit-tested on Linux; Win32 behavior is not.
+

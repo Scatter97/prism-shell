@@ -221,6 +221,14 @@ fn wire_callbacks(ui: &AppWindow, controller: &ControllerHandle) {
             }
         });
     }
+    {
+        let controller = controller.clone();
+        ui.global::<UiState>().on_quit_shell(move || {
+            if let Ok(mut controller) = controller.try_borrow_mut() {
+                controller.quit();
+            }
+        });
+    }
 }
 
 fn start_tick_timer(ui: &AppWindow, controller: &ControllerHandle) -> slint::Timer {

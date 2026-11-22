@@ -119,7 +119,7 @@ export component Taskbar inherits Rectangle {
             spacing: 2px;
             alignment: center;
 
-            IconButton {
+            if UiState.show-audio-status : IconButton {
                 glyph: UiState.muted || UiState.volume <= 0 ? Icons.volume-muted : Icons.volume;
                 button-size: 30px;
                 glyph-size: 16px;
@@ -129,7 +129,7 @@ export component Taskbar inherits Rectangle {
                 clicked => { UiState.toggle-control-center(); }
             }
 
-            IconButton {
+            if UiState.show-wifi-status : IconButton {
                 glyph: UiState.wifi-on ? Icons.wifi : Icons.wifi-off;
                 button-size: 30px;
                 glyph-size: 16px;
