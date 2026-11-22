@@ -2,8 +2,9 @@
 
 Status: portable unit tests, Linux visual tests, virtual-display interaction tests, Windows MSVC
 cross-builds, and a native `windows-latest` compile/test run were executed. One Windows 11 startup
-attempt failed before any Prism surface appeared; commit `3936efd` fixes the HWND timing but has
-not been re-tested. No Windows desktop runtime behavior is validated.
+attempt failed before any Prism surface appeared; commit `3936efd` fixes the HWND timing, passed
+native Windows CI build/tests, but has not been re-tested on a Windows 11 desktop. No Windows
+desktop runtime behavior is validated.
 
 Last update: 2026-11-21.
 
@@ -54,17 +55,18 @@ Executed results:
   `window handle unavailable: the underlying handle cannot be represented using the types in this
   crate`. Slint/winit creates the HWND asynchronously; the old code requested it immediately after
   `show()`. Commit `3936efd` resolves the HWND on the first event-loop tick with a 5-second timeout.
-  The fix is cross-compiled and portable-tested on Linux, but has **not** been re-run on Windows.
-  No `Tested on Windows` runtime label applies to any feature yet.
-- **Native Windows CI:** GitHub Actions run
-  [44983452807](https://github.com/Scatter97/prism-shell/actions/runs/44983452807) passed both
-  jobs for commit `25668a9`:
-  - Linux build/tests: 9m55s.
-  - Windows MSVC build/tests: 14m31s.
-  - Windows steps: format, Clippy, 72 tests, debug executables.
-  - The run has one non-blocking annotation: `actions/checkout@v4` is being moved from Node 20 to
+  The fix is cross-compiled, passed native `windows-latest` CI build/tests (run 44985985957), but
+  has **not** been re-run on Windows 11. No `Tested on Windows` runtime label applies to any feature
+  yet.
+- **Native Windows CI:** two runs passed:
+  - [44983452807](https://github.com/Scatter97/prism-shell/actions/runs/44983452807) for `25668a9`:
+    Linux 9m55s, Windows 14m31s.
+  - [44985985957](https://github.com/Scatter97/prism-shell/actions/runs/44985985957) for the HWND
+    fix `3936efd`: Linux 15m14s, Windows 19m42s.
+  - Both Windows jobs ran format, Clippy, 72 tests, and debug executables.
+  - The runs have one non-blocking annotation: `actions/checkout@v4` is being moved from Node 20 to
     Node 24 by GitHub.
-  - This is a hosted Windows Server runner, not a Windows 11 desktop; it does not validate DWM,
+  - These are hosted Windows Server runners, not Windows 11 desktops; they do not validate DWM,
     Explorer, focus, transparency, or the taskbar overlay.
 - **CI configuration:** `.github/workflows/ci.yml` now cancels superseded runs on the same ref and
   ignores Markdown-only pushes. The runtime checklist is still the only Windows desktop test.
