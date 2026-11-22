@@ -229,8 +229,9 @@ Task Manager if a surface blocks the desktop; no system state is changed by doin
 
 A native `windows-latest` CI job may build/test/fmt/clippy, but it cannot validate DWM
 transparency, Explorer focus rules, the taskbar, Core Audio endpoints, radios, or notification
-consent. `.github/workflows/ci.yml` contains proposed job definitions. It has not been executed in
-this environment (no remote/push authorization).
+consent. `.github/workflows/ci.yml` has run successfully on GitHub Actions (run 44983452807):
+Linux 9m55s, Windows 14m31s, both jobs passing. It is a compile/portable-test gate, not a Windows
+desktop runtime test. CI cancels superseded runs on the same ref and skips Markdown-only pushes.
 
 ## 10. Common issues
 

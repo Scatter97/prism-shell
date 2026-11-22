@@ -1,8 +1,8 @@
 # Testing — Prism Shell
 
-Status: portable unit tests, Linux visual tests, virtual-display interaction tests, and Windows
-MSVC debug/release cross-builds were executed. Native Windows runtime integration was **not**
-executed and must not be reported as passing. The checklist is in
+Status: portable unit tests, Linux visual tests, virtual-display interaction tests, Windows MSVC
+cross-builds, and a native `windows-latest` compile/test run were executed. Native Windows desktop
+runtime integration was **not** executed and must not be reported as passing. The checklist is in
 `docs/WINDOWS_VALIDATION.md`.
 
 Last update: 2026-11-21.
@@ -18,7 +18,7 @@ Last update: 2026-11-21.
 | Windows geometry/identity | DPI physical rects, panel clamping, executable normalization, friendly names, window eligibility, grouping | `prism-windows` portable tests |
 | Visual | Layout, typography, spacing, overflow, DPI behavior, state presentation | Xvfb screenshots + manual review |
 | Interaction | Real pointer/keyboard state transitions | `xdotool` against Xvfb |
-| Windows compile | MSVC target, link, PE output, static CRT | `cargo xwin` |
+| Windows compile | MSVC target, link, PE output, static CRT | `cargo xwin` + `windows-latest` CI |
 | Windows runtime | HWND styles, DWM alpha, focus/z-order, Explorer coexistence, activation, recovery | **Not run** |
 
 ## 2. Commands and results
@@ -50,10 +50,20 @@ Executed results:
 - **Windows release cross-build:** `cargo xwin build --release --target
   x86_64-pc-windows-msvc -p prism-app --bins` produced a 14 MB GUI-subsystem `prism-shell.exe` and
   a 15 MB `prism-preview.exe`, with no VC runtime import. This proves the toolchain/link path only.
-- **Windows runtime:** not executed. No `Tested on Windows` label applies to any feature. The
-  runtime checklist and smoke script exist but have not run.
-- **CI:** `.github/workflows/ci.yml` exists as a proposed Linux/Windows build+test workflow, but it
-  has not run (no remote/push authorization). Do not report it as passing.
+- **Windows runtime:** not executed. No `Tested on Windows` runtime label applies to any feature.
+  The runtime checklist and smoke script exist but have not run.
+- **Native Windows CI:** GitHub Actions run
+  [44983452807](https://github.com/Scatter97/prism-shell/actions/runs/44983452807) passed both
+  jobs for commit `25668a9`:
+  - Linux build/tests: 9m55s.
+  - Windows MSVC build/tests: 14m31s.
+  - Windows steps: format, Clippy, 72 tests, debug executables.
+  - The run has one non-blocking annotation: `actions/checkout@v4` is being moved from Node 20 to
+    Node 24 by GitHub.
+  - This is a hosted Windows Server runner, not a Windows 11 desktop; it does not validate DWM,
+    Explorer, focus, transparency, or the taskbar overlay.
+- **CI configuration:** `.github/workflows/ci.yml` now cancels superseded runs on the same ref and
+  ignores Markdown-only pushes. The runtime checklist is still the only Windows desktop test.
 - **Automated UI snapshot matrix:** `scripts/test/ui-snapshots.sh` generated 14 UI-only PNGs at
   1920×1080, 1280×800, and 125%/150%/200% scale. All files were non-empty; dimensions were checked
   with `file` (1920×1080 for scale checks, 1280×800 for the small canvas). A separate 3840×2160
@@ -183,8 +193,10 @@ so images vary by capture time. `--scale 1` is required for a 1:1 logical PNG.
 
 Do not claim these as complete:
 
-- Windows 11 runtime for anything in `prism-shell.exe`: window creation, HWND styles, DWM alpha,
-  frameless/transparent appearance, focus/z-order, non-activating taskbar, click-through.
+- Windows 11 desktop runtime for anything in `prism-shell.exe`: window creation, HWND styles, DWM
+  alpha, frameless/transparent appearance, focus/z-order, non-activating taskbar, click-through.
+- Interactive execution on a Windows 11 desktop; the `windows-latest` run only compiles/links and
+  runs portable unit tests on a server image.
 - Win32 `EnumWindows`/`SetWinEventHook` behavior, AUMID/UWP identity, icon extraction,
   activation/minimization, elevated/UIPI targets.
 - Explorer/taskbar coexistence, process-death recovery, lock/sleep/resume, Explorer restart.

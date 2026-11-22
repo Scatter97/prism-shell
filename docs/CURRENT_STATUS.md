@@ -9,9 +9,10 @@ Last updated: 2026-11-21. Target: Windows 11 x64. Development host: Linux.
 | Phase 0 — research/feasibility | **Research complete** | `docs/research/windows-api-notes.md`, `docs/WINDOWS_API_RESEARCH.md`, `docs/UI_FRAMEWORK_EVALUATION.md` |
 | Phase 1 — native foundation | **Implemented; Tested on Linux** | workspace, 72 portable tests, config/logging, platform traits |
 | Phase 2 — taskbar + Control Center preview | **Implemented; Tested on Linux** | interactive Slint mock preview, responsive/DPI screenshots |
-| Phase 3A — native Windows shell host | **Implemented; successfully cross-compiled** | `prism-windows` crate, Win32/DWM host, taskbar/CC/launcher surfaces |
-| Phase 3A — real window tracking | **Implemented; successfully cross-compiled** | `EnumWindows`, icon extraction, foreground events, activation |
-| Phase 3A — Windows runtime validation | **Not executed** | no Windows 11 host/VM available in this environment |
+| Phase 3A — native Windows shell host | **Implemented; successfully cross-compiled; native CI build/test passed** | `prism-windows` crate, Win32/DWM host, taskbar/CC/launcher surfaces |
+| Phase 3A — real window tracking | **Implemented; successfully cross-compiled; native CI build/test passed** | `EnumWindows`, icon extraction, foreground events, activation |
+| Phase 3A — Windows CI compile/test | **Executed on `windows-latest`** | GitHub Actions run 44983452807: fmt, clippy, 72 tests, debug binaries |
+| Phase 3A — Windows runtime validation | **Not executed** | no Windows 11 desktop host/VM available |
 | Taskbar hiding / Explorer replacement | **Not implemented; blocked** | deliberate safety boundary |
 | Real system controls (audio/radios/brightness/media) | **Not implemented** | shown as unavailable or native Settings fallbacks |
 
@@ -50,6 +51,10 @@ Both Windows binaries build with `cargo xwin` for `x86_64-pc-windows-msvc`:
 - Static MSVC CRT (`+crt-static`); no `VCRUNTIME140.dll`/MSVCP dependency.
 - `prism-shell.exe` imports only system DLLs (kernel32, user32, dwmapi, shell32, comctl32, gdi32, etc.).
 - Debug cross-build also succeeds; only benign `LNK4099` debug-CRT PDB warnings.
+- GitHub Actions run
+  [44983452807](https://github.com/Scatter97/prism-shell/actions/runs/44983452807) passed on
+  `windows-latest`: formatting, Clippy, 72 tests, and debug executables. This is a native MSVC
+  compile/test on a hosted Windows Server runner, not a Windows 11 desktop session.
 
 ### Native Windows path implemented
 
@@ -81,7 +86,12 @@ Both Windows binaries build with `cargo xwin` for `x86_64-pc-windows-msvc`:
 
 ## Actually tested on Windows 11
 
-**Nothing.** The Windows binaries have not been executed on Windows, not even under Wine.
+**No interactive Windows 11 runtime test has been executed.** The binaries have not been run on a
+Windows 11 desktop, not even under Wine.
+
+The native shell code has been compiled and its portable tests run on a hosted `windows-latest`
+runner (Windows Server). That proves the MSVC build, link, and portable test behavior; it does
+**not** exercise the Slint surfaces, DWM, Explorer, focus rules, or real window tracking.
 
 Therefore the following remain **Unverified**:
 
