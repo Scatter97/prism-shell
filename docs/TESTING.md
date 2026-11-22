@@ -47,7 +47,8 @@ Executed results:
   has not run (no remote/push authorization). Do not report it as passing.
 - **Automated UI snapshot matrix:** `scripts/test/ui-snapshots.sh` generated 14 UI-only PNGs at
   1920×1080, 1280×800, and 125%/150%/200% scale. All files were non-empty; dimensions were checked
-  with `file` (1920×1080 for scale checks, 1280×800 for the small canvas).
+  with `file` (1920×1080 for scale checks, 1280×800 for the small canvas). A separate 3840×2160
+  capture verified the full UI at 200% on a 4K logical canvas.
 
 The Windows binaries are debug builds. A release cross-build and native `windows-latest` CI job
 remain future work.
@@ -109,6 +110,7 @@ All paths are under `artifacts/screenshots/` (gitignored, local review artifacts
 | `dpi-125-cc.png` | 2560×1440 capture with logical 2048×1152 at 125% |
 | `dpi-150-cc.png` | 2560×1440 capture with logical 1706×960 at 150% |
 | `dpi-200-cc.png` | 1920×1080 capture with logical 960×540 at 200% (stress) |
+| `dpi-200-4k.png` | 3840×2160 capture: logical 1920×1080 at 200% (4K native) |
 | `interaction2-wifi-pending.png` | Wi-Fi tile pending spinner + “Changing…” |
 | `interaction2-power-toast.png` | Confirmed power action, CC closed, top-left toast |
 | `interaction3-minimize.png` | Active browser minimized; no hover preview re-opened |
@@ -152,6 +154,8 @@ so images vary by capture time. `--scale 1` is required for a 1:1 logical PNG.
   pinned, scrollbar visible.
 - At 200% on a 960×540 logical canvas the decorative desktop mock is hidden to avoid a cramped,
   overlapping scene; the shell surfaces remain usable.
+- At 200% on a 4K canvas (logical 1920×1080) the full UI renders identically at native 3840×2160
+  with no clipping.
 - No content is positioned from a single hardcoded resolution; the taskbar centers from stage
   width, and the CC anchors to the taskbar's right edge with clamping.
 
