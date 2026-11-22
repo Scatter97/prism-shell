@@ -1,0 +1,130 @@
+import { AppItem, AudioOutputItem, ScenarioItem, ToggleItem, WindowItem } from "types.slint";
+
+// Shared view state for the taskbar, launcher, and Control Center.
+// Rust owns this data. Slint components only read it and emit semantic
+// callbacks; no component talks to an operating system directly.
+export global UiState {
+    // Branding / context
+    in-out property <bool> development-preview: true;
+    in-out property <string> platform-label: "Linux preview · mock data";
+    in-out property <string> version-label: "v0.1.0";
+
+    // Dock
+    in-out property <[AppItem]> apps: [];
+    in-out property <int> hidden-app-count: 0;
+    in-out property <string> hovered-app-id: "";
+    in-out property <int> hovered-app-slot: -1;
+    in-out property <bool> launcher-open: false;
+    in-out property <[AppItem]> launcher-apps: [];
+    in-out property <string> launcher-query: "";
+
+    // Window preview
+    in-out property <bool> preview-open: false;
+    in-out property <string> preview-app-id: "";
+    in-out property <string> preview-app-name: "";
+    in-out property <int> preview-app-index: -1;
+    in-out property <int> preview-anchor-slot: -1;
+    in-out property <[WindowItem]> preview-windows: [];
+    in-out property <bool> tooltip-visible: false;
+    in-out property <string> tooltip-text: "";
+
+    // Control Center
+    in-out property <bool> cc-open: false;
+    in-out property <[ToggleItem]> quick-toggles: [];
+    in-out property <bool> audio-picker-open: false;
+    in-out property <[AudioOutputItem]> audio-outputs: [];
+    in-out property <string> audio-device: "No output";
+    in-out property <string> audio-detail: "";
+    in-out property <float> volume: 68;
+    in-out property <bool> muted: false;
+    in-out property <bool> audio-available: true;
+    in-out property <string> audio-state-detail: "";
+
+    in-out property <float> brightness: 62;
+    in-out property <bool> brightness-available: true;
+    in-out property <string> brightness-note: "";
+
+    in-out property <bool> wifi-on: true;
+    in-out property <string> wifi-name: "Prism-5G";
+    in-out property <string> wifi-detail: "Connected, secured";
+    in-out property <string> wifi-capability: "available";
+    in-out property <bool> bluetooth-on: true;
+    in-out property <string> bluetooth-name: "MX Master 3S";
+    in-out property <string> bluetooth-detail: "Connected";
+    in-out property <string> bluetooth-capability: "available";
+    in-out property <bool> wired: false;
+
+    in-out property <bool> battery-present: true;
+    in-out property <int> battery-percent: 76;
+    in-out property <bool> battery-charging: true;
+    in-out property <string> battery-detail: "Charging · 1h 12m to full";
+
+    // "ready" | "empty" | "error" | "unsupported"
+    in-out property <string> media-state: "ready";
+    in-out property <string> media-title: "Aurora Drift";
+    in-out property <string> media-artist: "Lumen Fields";
+    in-out property <string> media-album: "Night Signals";
+    in-out property <bool> media-playing: true;
+    in-out property <float> media-progress: 0.43;
+    in-out property <string> media-position: "1:42";
+    in-out property <string> media-duration: "3:56";
+    in-out property <string> media-art: "aurora";
+    in-out property <string> media-detail: "";
+
+    // Clock (real system time is supplied by the app layer)
+    in-out property <string> clock-time: "21:07";
+    in-out property <string> clock-date: "Sat, Nov 21";
+    in-out property <bool> clock-show-date: true;
+
+    // Transient feedback
+    in-out property <bool> toast-visible: false;
+    in-out property <string> toast-message: "";
+    in-out property <string> toast-kind: "info";
+    in-out property <bool> confirm-open: false;
+    in-out property <string> confirm-title: "Power options";
+    in-out property <string> confirm-detail: "This is a development preview. No power action will be taken.";
+
+    // Developer controls
+    in-out property <[ScenarioItem]> scenarios: [];
+    in-out property <string> scenario: "laptop";
+    in-out property <bool> reduced-motion: false;
+
+    // Dock interaction
+    callback app-clicked(string);
+    callback app-hovered(string);
+    callback app-unhovered(string);
+    callback window-activated(int);
+    callback window-closed(int);
+    callback toggle-launcher();
+    callback close-launcher();
+    callback launcher-search(string);
+    callback launcher-app-clicked(string);
+
+    // Control Center
+    callback toggle-control-center();
+    callback close-control-center();
+    callback quick-toggle-clicked(string);
+    callback volume-changed(float);
+    callback toggle-mute();
+    callback toggle-audio-picker();
+    callback audio-output-selected(string);
+    callback brightness-changed(float);
+    callback open-settings(string);
+    callback media-play-pause();
+    callback media-next();
+    callback media-previous();
+    callback power-requested(string);
+    callback power-confirmed(string);
+    callback confirm-cancelled();
+
+    // Window preview
+    callback close-preview();
+    callback keep-preview-open(bool);
+
+    // Developer / application lifecycle
+    callback scenario-selected(string);
+    callback simulate-display-change();
+    callback simulate-audio-loss();
+    callback dismiss-toast();
+    callback quit-preview();
+}

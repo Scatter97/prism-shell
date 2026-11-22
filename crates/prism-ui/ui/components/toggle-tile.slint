@@ -1,0 +1,125 @@
+import { Icons } from "../icons.slint";
+import { Tokens } from "../tokens.slint";
+import { ToggleItem } from "../types.slint";
+import { Icon } from "icon.slint";
+
+export component ToggleTile inherits Rectangle {
+    in property <ToggleItem> item;
+    callback clicked();
+
+    in-out property <bool> pulse-on: false;
+    height: 80px;
+    border-radius: Tokens.radius-tile;
+    background: Tokens.surface-card;
+    border-width: 1px;
+    border-color: root.item.phase == "failed" ? rgba(241, 124, 130, 0.42)
+        : root.item.active ? #00000000
+        : root.item.capability == "available" ? Tokens.border-subtle
+        : rgba(255, 255, 255, 0.055);
+    opacity: root.item.capability == "available" ? 1.0 : 0.62;
+    drop-shadow-blur: root.item.active ? 22px : 0px;
+    drop-shadow-color: rgba(137, 168, 255, 0.22);
+    drop-shadow-offset-y: 5px;
+    accessible-role: button;
+    accessible-label: root.item.label + ", " + (root.item.active ? "on" : "off");
+
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        border-radius: parent.border-radius;
+        background: @linear-gradient(135deg, #8aa8ff 0%, #a98bff 100%);
+        opacity: root.item.active ? 1.0 : 0.0;
+        animate opacity { duration: Tokens.motion-normal; }
+    }
+
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        border-radius: parent.border-radius;
+        background: Tokens.surface-card-hover;
+        opacity: touch.has-hover && root.item.capability == "available" ? 1.0 : 0.0;
+        animate opacity { duration: Tokens.motion-fast; }
+    }
+
+    Rectangle {
+        x: 12px;
+        y: 10px;
+        width: 26px;
+        height: 26px;
+        border-radius: 9px;
+        background: root.item.active ? rgba(11, 17, 31, 0.14) : rgba(255, 255, 255, 0.06);
+
+        Icon {
+            width: 14px;
+            height: 14px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            glyph: root.item.icon-kind == "wifi" ? Icons.wifi
+                : root.item.icon-kind == "bluetooth" ? Icons.bluetooth
+                : root.item.icon-kind == "focus" ? Icons.focus
+                : Icons.night-light;
+            tint: root.item.active ? Tokens.text-on-accent
+                : root.item.capability == "available" ? Tokens.accent
+                : Tokens.text-tertiary;
+        }
+    }
+
+    Icon {
+        x: parent.width - self.width - 12px;
+        y: 13px;
+        width: 13px;
+        height: 13px;
+        glyph: root.item.phase == "pending" ? Icons.spinner
+            : root.item.phase == "failed" ? Icons.warning
+            : root.item.active ? Icons.check
+            : root.item.capability == "unsupported" ? Icons.info
+            : root.item.capability == "permission" ? Icons.lock
+            : Icons.info;
+        tint: root.item.phase == "failed" ? (root.item.active ? #5b1e26 : Tokens.critical)
+            : root.item.active ? rgba(13, 21, 38, 0.78)
+            : Tokens.text-tertiary;
+        opacity: (root.item.active || root.item.phase != "idle" || root.item.capability != "available" ? 1.0 : 0.0)
+            * (root.item.phase == "pending" && root.pulse-on ? 0.35 : 1.0);
+        animate opacity { duration: 400ms; }
+    }
+
+    Text {
+        x: 12px;
+        y: 42px;
+        width: parent.width - 24px;
+        height: 17px;
+        text: root.item.label;
+        color: root.item.active ? Tokens.text-on-accent : Tokens.text-primary;
+        font-size: Tokens.type-body;
+        font-weight: Tokens.weight-medium;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+
+    Text {
+        x: 12px;
+        y: 59px;
+        width: parent.width - 24px;
+        height: 14px;
+        text: root.item.phase == "pending" ? "Changing…"
+            : root.item.phase == "failed" ? root.item.error
+            : root.item.detail;
+        color: root.item.phase == "failed" ? (root.item.active ? #5b1e26 : Tokens.critical)
+            : root.item.active ? rgba(13, 21, 38, 0.72)
+            : Tokens.text-tertiary;
+        font-size: Tokens.type-caption;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    Timer {
+        interval: 750ms;
+        running: root.item.phase == "pending";
+        triggered => { root.pulse-on = !root.pulse-on; }
+    }
+}

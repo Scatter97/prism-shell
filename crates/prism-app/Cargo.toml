@@ -1,0 +1,35 @@
+[package]
+name = "prism-app"
+description = "Prism Shell executables and application lifecycle"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+prism-core.workspace = true
+prism-platform.workspace = true
+prism-ui.workspace = true
+slint.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+image.workspace = true
+thiserror.workspace = true
+
+[[bin]]
+name = "prism-preview"
+path = "src/bin/prism-preview.rs"
+
+[[bin]]
+name = "prism-shell"
+path = "src/bin/prism-shell.rs"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_HiDpi",
+] }

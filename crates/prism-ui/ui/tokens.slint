@@ -1,0 +1,72 @@
+import "../../../assets/fonts/Inter-Regular.ttf";
+import "../../../assets/fonts/Inter-Medium.ttf";
+import "../../../assets/fonts/Inter-SemiBold.ttf";
+
+// The single source of truth for the V1 visual system. Components must not
+// invent one-off colors, radii, or motion timings.
+export global Tokens {
+    // Typography
+    out property <string> font-family: "Inter";
+    out property <length> type-caption: 10.5px;
+    out property <length> type-small: 11.5px;
+    out property <length> type-body: 12.5px;
+    out property <length> type-body-large: 14px;
+    out property <length> type-title: 16px;
+    out property <length> type-display: 22px;
+    out property <int> weight-regular: 400;
+    out property <int> weight-medium: 500;
+    out property <int> weight-semibold: 600;
+
+    // Surfaces
+    out property <color> wallpaper-deep: #070a12;
+    out property <color> wallpaper-mid: #11182a;
+    out property <color> wallpaper-violet: #1c203d;
+    out property <color> surface-dock: rgba(22, 27, 39, 0.88);
+    out property <color> surface-dock-top: rgba(33, 40, 57, 0.92);
+    out property <color> surface-panel: rgba(20, 25, 36, 0.96);
+    out property <color> surface-panel-top: rgba(28, 34, 48, 0.96);
+    out property <color> surface-elevated: rgba(38, 46, 64, 0.94);
+    out property <color> surface-card: rgba(255, 255, 255, 0.052);
+    out property <color> surface-card-hover: rgba(255, 255, 255, 0.085);
+    out property <color> surface-card-active: rgba(137, 168, 255, 0.16);
+    out property <color> surface-inset: rgba(5, 8, 15, 0.35);
+    out property <color> surface-scrim: rgba(4, 6, 12, 0.58);
+
+    // Lines and text
+    out property <color> border-subtle: rgba(255, 255, 255, 0.09);
+    out property <color> border-strong: rgba(255, 255, 255, 0.15);
+    out property <color> border-accent: rgba(137, 168, 255, 0.44);
+    out property <color> text-primary: #f5f7fa;
+    out property <color> text-secondary: #a6afbf;
+    out property <color> text-tertiary: #7c879b;
+    out property <color> text-on-accent: #0d1526;
+
+    // Semantic accents
+    out property <color> accent: #89a8ff;
+    out property <color> accent-strong: #6e8df7;
+    out property <color> accent-violet: #b48bff;
+    out property <color> accent-soft: rgba(137, 168, 255, 0.16);
+    out property <color> success: #6ee7b0;
+    out property <color> warning: #f5c26b;
+    out property <color> critical: #f17c82;
+    out property <color> critical-soft: rgba(241, 124, 130, 0.14);
+    out property <color> shadow: rgba(0, 0, 0, 0.42);
+
+    // Geometry
+    out property <length> radius-dock: 18px;
+    out property <length> radius-panel: 20px;
+    out property <length> radius-tile: 14px;
+    out property <length> radius-control: 11px;
+    out property <length> radius-pill: 999px;
+    out property <length> dock-height: 62px;
+    out property <length> dock-bottom-gap: 16px;
+    out property <length> app-icon-size: 30px;
+    out property <length> app-slot-size: 44px;
+    out property <length> panel-width: 384px;
+
+    // Motion
+    out property <duration> motion-instant: 90ms;
+    out property <duration> motion-fast: 140ms;
+    out property <duration> motion-normal: 200ms;
+    out property <duration> motion-slow: 260ms;
+}

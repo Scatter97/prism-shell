@@ -1,0 +1,62 @@
+// Central asset registry. Keeping every path here means the rest of the UI is
+// independent of the asset directory layout and all images are embedded at
+// compile time on every platform.
+export global Icons {
+    // Brand
+    out property <image> prism: @image-url("../../../assets/icons/prism-mark.svg");
+    out property <image> control-center: @image-url("../../../assets/icons/control-center.svg");
+
+    // Status / monochrome (tinted with Image.colorize)
+    out property <image> wifi: @image-url("../../../assets/icons/status/wifi.svg");
+    out property <image> wifi-off: @image-url("../../../assets/icons/status/wifi-off.svg");
+    out property <image> bluetooth: @image-url("../../../assets/icons/status/bluetooth.svg");
+    out property <image> bluetooth-off: @image-url("../../../assets/icons/status/bluetooth-off.svg");
+    out property <image> night-light: @image-url("../../../assets/icons/status/moon.svg");
+    out property <image> focus: @image-url("../../../assets/icons/status/target.svg");
+    out property <image> volume: @image-url("../../../assets/icons/status/volume-2.svg");
+    out property <image> volume-muted: @image-url("../../../assets/icons/status/volume-x.svg");
+    out property <image> chevron: @image-url("../../../assets/icons/status/chevron-right.svg");
+    out property <image> chevron-down: @image-url("../../../assets/icons/status/chevron-down.svg");
+    out property <image> battery: @image-url("../../../assets/icons/status/battery.svg");
+    out property <image> battery-charging: @image-url("../../../assets/icons/status/battery-charging.svg");
+    out property <image> battery-full: @image-url("../../../assets/icons/status/battery-full.svg");
+    out property <image> settings: @image-url("../../../assets/icons/status/settings.svg");
+    out property <image> lock: @image-url("../../../assets/icons/status/lock.svg");
+    out property <image> power: @image-url("../../../assets/icons/status/power.svg");
+    out property <image> play: @image-url("../../../assets/icons/status/play.svg");
+    out property <image> pause: @image-url("../../../assets/icons/status/pause.svg");
+    out property <image> previous: @image-url("../../../assets/icons/status/skip-back.svg");
+    out property <image> next: @image-url("../../../assets/icons/status/skip-forward.svg");
+    out property <image> close: @image-url("../../../assets/icons/status/x.svg");
+    out property <image> search: @image-url("../../../assets/icons/status/search.svg");
+    out property <image> apps: @image-url("../../../assets/icons/status/grid-2x2.svg");
+    out property <image> display: @image-url("../../../assets/icons/status/monitor.svg");
+    out property <image> sun: @image-url("../../../assets/icons/status/sun.svg");
+    out property <image> headphones: @image-url("../../../assets/icons/status/headphones.svg");
+    out property <image> check: @image-url("../../../assets/icons/status/check.svg");
+    out property <image> warning: @image-url("../../../assets/icons/status/triangle-alert.svg");
+    out property <image> spinner: @image-url("../../../assets/icons/status/loader-circle.svg");
+    out property <image> terminal: @image-url("../../../assets/icons/status/terminal.svg");
+    out property <image> folder: @image-url("../../../assets/icons/status/folder.svg");
+    out property <image> globe: @image-url("../../../assets/icons/status/globe.svg");
+    out property <image> mail: @image-url("../../../assets/icons/status/mail.svg");
+    out property <image> note: @image-url("../../../assets/icons/status/file-text.svg");
+    out property <image> window: @image-url("../../../assets/icons/status/app-window.svg");
+    out property <image> calendar: @image-url("../../../assets/icons/status/calendar.svg");
+    out property <image> clock: @image-url("../../../assets/icons/status/clock.svg");
+    out property <image> command: @image-url("../../../assets/icons/status/command.svg");
+    out property <image> minus: @image-url("../../../assets/icons/status/minus.svg");
+    out property <image> plus: @image-url("../../../assets/icons/status/plus.svg");
+    out property <image> external: @image-url("../../../assets/icons/status/external-link.svg");
+    out property <image> info: @image-url("../../../assets/icons/status/info.svg");
+    out property <image> refresh: @image-url("../../../assets/icons/status/rotate-ccw.svg");
+
+    // Full-colour application icons (never tinted)
+    out property <image> app-files: @image-url("../../../assets/icons/apps/files.svg");
+    out property <image> app-browser: @image-url("../../../assets/icons/apps/browser.svg");
+    out property <image> app-terminal: @image-url("../../../assets/icons/apps/terminal.svg");
+    out property <image> app-mail: @image-url("../../../assets/icons/apps/mail.svg");
+    out property <image> app-music: @image-url("../../../assets/icons/apps/music.svg");
+    out property <image> app-notes: @image-url("../../../assets/icons/apps/notes.svg");
+    out property <image> app-generic: @image-url("../../../assets/icons/apps/generic.svg");
+}

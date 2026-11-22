@@ -1,0 +1,235 @@
+import { Tokens } from "tokens.slint";
+import { UiState } from "state.slint";
+import { AppItem, AudioOutputItem, ScenarioItem, ToggleItem, WindowItem } from "types.slint";
+
+export { UiState }
+export { AppItem, AudioOutputItem, ScenarioItem, ToggleItem, WindowItem }
+import { ConfirmSheet } from "components/confirm-sheet.slint";
+import { ControlCenter } from "components/control-center.slint";
+import { DesktopMock } from "components/desktop-mock.slint";
+import { DevBar } from "components/dev-bar.slint";
+import { Launcher } from "components/launcher.slint";
+import { Taskbar } from "components/taskbar.slint";
+import { Toast } from "components/toast.slint";
+import { WindowPreview } from "components/window-preview.slint";
+
+export component AppWindow inherits Window {
+    title: "Prism Shell — Development Preview";
+    in property <length> stage-width: 1600px;
+    in property <length> stage-height: 1000px;
+    width: root.stage-width;
+    height: root.stage-height;
+    no-frame: true;
+    background: Tokens.wallpaper-deep;
+    default-font-family: Tokens.font-family;
+    default-font-size: Tokens.type-body;
+    default-font-weight: Tokens.weight-regular;
+
+    key-root := FocusScope {
+        width: parent.width;
+        height: parent.height;
+
+        // ---- Wallpaper -----------------------------------------------------
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: @linear-gradient(145deg, #060912 0%, #0d1424 38%, #151a2f 68%, #1a1b34 100%);
+        }
+
+        Rectangle {
+            x: parent.width * 0.56;
+            y: -240px;
+            width: 760px;
+            height: 760px;
+            border-radius: 380px;
+            background: rgba(89, 121, 232, 0.14);
+            drop-shadow-blur: 120px;
+            drop-shadow-color: rgba(94, 130, 255, 0.20);
+        }
+
+        Rectangle {
+            x: -220px;
+            y: parent.height * 0.52;
+            width: 620px;
+            height: 620px;
+            border-radius: 310px;
+            background: rgba(104, 190, 220, 0.08);
+            drop-shadow-blur: 110px;
+            drop-shadow-color: rgba(89, 211, 214, 0.11);
+        }
+
+        Rectangle {
+            x: parent.width * 0.52;
+            y: parent.height - 330px;
+            width: 700px;
+            height: 460px;
+            border-radius: 350px;
+            background: rgba(180, 139, 255, 0.075);
+            drop-shadow-blur: 120px;
+            drop-shadow-color: rgba(180, 139, 255, 0.11);
+        }
+
+        Rectangle {
+            x: 120px;
+            y: -90px;
+            width: 940px;
+            height: 260px;
+            transform-rotation: -16deg;
+            background: @linear-gradient(90deg, transparent 0%, rgba(137, 168, 255, 0.045) 35%, rgba(180, 139, 255, 0.05) 60%, transparent 100%);
+        }
+
+        Rectangle {
+            y: parent.height - 260px;
+            width: parent.width;
+            height: 260px;
+            background: @linear-gradient(180deg, transparent 0%, rgba(5, 8, 15, 0.45) 100%);
+        }
+
+        // ---- Desktop context ----------------------------------------------
+        DesktopMock {
+            x: 80px;
+            y: 86px;
+            width: parent.width - 160px;
+            height: parent.height - 330px;
+            visible: root.stage-width > 1100px;
+        }
+
+        // Clicking the wallpaper closes transient surfaces without stealing
+        // focus from other applications.
+        TouchArea {
+            clicked => {
+                UiState.close-control-center();
+                UiState.close-launcher();
+                UiState.close-preview();
+            }
+        }
+
+        DevBar {
+            x: 0px;
+            y: 14px;
+            width: parent.width;
+        }
+
+        // ---- Dock ----------------------------------------------------------
+        taskbar := Taskbar {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - Tokens.dock-bottom-gap - self.height;
+            available-width: parent.width;
+        }
+
+        // Hover tooltip for pinned, non-running applications.
+        Rectangle {
+            x: UiState.hovered-app-slot < 0 ? (parent.width - self.width) / 2
+                : Math.max(18px, Math.min(parent.width - self.width - 18px,
+                    taskbar.x + 71px + UiState.hovered-app-slot * 50px + 23px - self.width / 2));
+            width: 232px;
+            height: 30px;
+            border-radius: 9px;
+            background: rgba(20, 25, 37, 0.97);
+            border-width: 1px;
+            border-color: Tokens.border-subtle;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: rgba(0, 0, 0, 0.38);
+            opacity: UiState.tooltip-visible ? 1.0 : 0.0;
+            y: taskbar.y - self.height - 10px + (UiState.tooltip-visible ? 0px : 6px);
+            animate opacity { duration: UiState.reduced-motion ? 0ms : 120ms; }
+            animate y { duration: UiState.reduced-motion ? 0ms : 150ms; }
+            accessible-role: content-info;
+            accessible-label: UiState.tooltip-text;
+
+            Text {
+                x: 10px;
+                y: 0px;
+                width: parent.width - 20px;
+                height: parent.height;
+                text: UiState.tooltip-text;
+                color: Tokens.text-secondary;
+                font-size: Tokens.type-caption;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+
+        // ---- Popovers ------------------------------------------------------
+        Rectangle {
+            x: UiState.preview-anchor-slot < 0 ? (parent.width - self.width) / 2
+                : Math.max(18px, Math.min(parent.width - self.width - 18px,
+                    taskbar.x + 71px + UiState.preview-anchor-slot * 50px + 23px - self.width / 2));
+            y: taskbar.y - 214px - 16px;
+            width: Math.min(724px, 24px + UiState.preview-windows.length * 232px);
+            height: 214px;
+            background: #00000000;
+            WindowPreview {
+                x: 0px;
+                y: 0px;
+            }
+        }
+
+        Rectangle {
+            x: Math.max(18px, taskbar.x + 2px);
+            y: taskbar.y - 452px - 12px;
+            width: 360px;
+            height: 452px;
+            background: #00000000;
+            Launcher {
+                x: 0px;
+                y: 0px;
+            }
+        }
+
+        ControlCenter {
+            x: Math.max(18px, Math.min(parent.width - self.width - 18px, taskbar.x + taskbar.width - self.width + 2px));
+            y: taskbar.y - self.height - 10px;
+            panel-max-height: parent.height - 140px;
+        }
+
+        Rectangle {
+            x: 20px;
+            y: 58px;
+            width: 390px;
+            height: 48px;
+            background: #00000000;
+            Toast {
+                x: 0px;
+                y: 0px;
+            }
+        }
+
+        ConfirmSheet {
+            width: parent.width;
+            height: parent.height;
+        }
+
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                if (UiState.confirm-open) {
+                    UiState.confirm-cancelled();
+                    return accept;
+                }
+                if (UiState.audio-picker-open) {
+                    UiState.toggle-audio-picker();
+                    return accept;
+                }
+                if (UiState.launcher-open) {
+                    UiState.close-launcher();
+                    return accept;
+                }
+                if (UiState.cc-open) {
+                    UiState.close-control-center();
+                    return accept;
+                }
+                if (UiState.preview-open) {
+                    UiState.close-preview();
+                    return accept;
+                }
+                return reject;
+            }
+            reject
+        }
+    }
+
+    init => {
+        key-root.focus();
+    }
+}

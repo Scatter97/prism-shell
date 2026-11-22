@@ -1,0 +1,743 @@
+import { Icons } from "../icons.slint";
+import { Tokens } from "../tokens.slint";
+import { UiState } from "../state.slint";
+import { Icon } from "icon.slint";
+import { IconButton } from "icon-button.slint";
+import { MediaCard } from "media-card.slint";
+import { PrismSlider } from "prism-slider.slint";
+import { ToggleTile } from "toggle-tile.slint";
+
+component SectionTitle inherits Text {
+    height: 16px;
+    color: Tokens.text-tertiary;
+    font-size: 9.5px;
+    font-weight: Tokens.weight-semibold;
+    letter-spacing: 0.7px;
+    vertical-alignment: center;
+}
+
+component SettingsLink inherits Rectangle {
+    in property <string> label: "Open settings";
+    in property <string> page: "home";
+    callback clicked();
+
+    height: 24px;
+    width: link-text.width + 20px;
+    border-radius: 7px;
+    background: link-touch.has-hover ? Tokens.surface-card-hover : #00000000;
+    accessible-role: button;
+    accessible-label: root.label;
+
+    Text {
+        x: 8px;
+        y: 0px;
+        width: parent.width - 16px;
+        height: parent.height;
+        text: root.label;
+        color: Tokens.accent;
+        font-size: Tokens.type-caption;
+        font-weight: Tokens.weight-medium;
+        vertical-alignment: center;
+    }
+
+    link-text := Text {
+        text: root.label;
+        color: transparent;
+        font-size: Tokens.type-caption;
+    }
+
+    link-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component ConnectionRow inherits Rectangle {
+    in property <image> glyph: Icons.wifi;
+    in property <string> title: "";
+    in property <string> detail: "";
+    in property <color> tint: Tokens.text-secondary;
+    callback clicked();
+
+    height: 36px;
+    border-radius: 9px;
+    background: row-touch.has-hover ? Tokens.surface-card-hover : #00000000;
+    accessible-role: button;
+    accessible-label: root.title + ", " + root.detail;
+
+    Rectangle {
+        x: 8px;
+        y: (parent.height - self.height) / 2;
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.045);
+        Icon {
+            width: 14px;
+            height: 14px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            glyph: root.glyph;
+            tint: root.tint;
+        }
+    }
+
+    Text {
+        x: 43px;
+        y: 4px;
+        width: parent.width - 78px;
+        height: 17px;
+        text: root.title;
+        color: Tokens.text-primary;
+        font-size: Tokens.type-small;
+        font-weight: Tokens.weight-medium;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    Text {
+        x: 43px;
+        y: 19px;
+        width: parent.width - 78px;
+        height: 14px;
+        text: root.detail;
+        color: Tokens.text-tertiary;
+        font-size: Tokens.type-caption;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    Icon {
+        x: parent.width - 24px;
+        y: (parent.height - self.height) / 2;
+        width: 12px;
+        height: 12px;
+        glyph: Icons.chevron;
+        tint: Tokens.text-tertiary;
+    }
+
+    row-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component UtilityButton inherits Rectangle {
+    in property <image> glyph: Icons.settings;
+    in property <string> label: "";
+    in property <bool> critical: false;
+    callback clicked();
+
+    height: 52px;
+    border-radius: 12px;
+    background: util-touch.has-hover
+        ? (root.critical ? Tokens.critical-soft : Tokens.surface-card-hover)
+        : Tokens.surface-card;
+    border-width: 1px;
+    border-color: util-touch.has-hover && root.critical ? rgba(241, 124, 130, 0.28) : Tokens.border-subtle;
+    accessible-role: button;
+    accessible-label: root.label;
+
+    Icon {
+        width: 17px;
+        height: 17px;
+        x: (parent.width - self.width) / 2;
+        y: 8px;
+        glyph: root.glyph;
+        tint: root.critical && util-touch.has-hover ? Tokens.critical : Tokens.text-secondary;
+    }
+
+    Text {
+        x: 4px;
+        y: 27px;
+        width: parent.width - 8px;
+        height: 16px;
+        text: root.label;
+        color: root.critical && util-touch.has-hover ? Tokens.critical : Tokens.text-secondary;
+        font-size: Tokens.type-caption;
+        font-weight: Tokens.weight-medium;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    util-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component ControlCenter inherits Rectangle {
+    in property <length> panel-max-height: 860px;
+    in property <bool> open: UiState.cc-open;
+    in-out property <bool> present: false;
+
+    width: Tokens.panel-width;
+    height: panel.height + 12px;
+    background: #00000000;
+    visible: root.present;
+    accessible-role: groupbox;
+    accessible-label: "Control Center";
+
+    changed open => {
+        if (root.open) {
+            root.present = true;
+        } else {
+            close-delay.running = true;
+        }
+    }
+
+    close-delay := Timer {
+        interval: 260ms;
+        running: false;
+        triggered => {
+            if (!root.open) {
+                root.present = false;
+            }
+            close-delay.running = false;
+        }
+    }
+
+    panel := Rectangle {
+        width: parent.width;
+        height: Math.min(root.panel-max-height, content.preferred-height + 32px + 92px);
+        y: root.open ? 0px : 9px;
+        border-radius: Tokens.radius-panel;
+        background: @linear-gradient(180deg, rgba(27, 33, 47, 0.985), rgba(15, 20, 30, 0.985));
+        border-width: 1px;
+        border-color: Tokens.border-strong;
+        drop-shadow-blur: 42px;
+        drop-shadow-color: rgba(0, 0, 0, 0.56);
+        drop-shadow-offset-y: 16px;
+        opacity: root.open ? 1.0 : 0.0;
+        animate opacity { duration: UiState.reduced-motion ? 0ms : 180ms; }
+        animate y { duration: UiState.reduced-motion ? 0ms : 215ms; }
+
+        flick := Flickable {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height - 92px;
+            content-width: self.width;
+            content-height: content.preferred-height + 32px;
+            interactive: content.preferred-height + 32px > self.height;
+
+            content := VerticalLayout {
+                x: 16px;
+                y: 16px;
+                width: parent.content-width - 32px;
+                height: content.preferred-height;
+                spacing: 10px;
+
+                // Header
+                HorizontalLayout {
+                    height: 26px;
+                    alignment: space-between;
+
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        Text {
+                            text: "Control Center";
+                            color: Tokens.text-primary;
+                            font-size: Tokens.type-title;
+                            font-weight: Tokens.weight-semibold;
+                            vertical-alignment: center;
+                        }
+                        Rectangle {
+                            width: 1px;
+                            height: 13px;
+                            y: (parent.height - self.height) / 2;
+                            background: Tokens.border-subtle;
+                        }
+                        Text {
+                            text: "SYSTEM";
+                            color: Tokens.text-tertiary;
+                            font-size: 9px;
+                            font-weight: Tokens.weight-semibold;
+                            letter-spacing: 0.8px;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    IconButton {
+                        glyph: Icons.settings;
+                        button-size: 26px;
+                        glyph-size: 15px;
+                        label: "Open Windows Settings";
+                        tint: Tokens.text-tertiary;
+                        clicked => { UiState.open-settings("home"); }
+                    }
+                }
+
+                // Quick controls
+                SectionTitle { text: "QUICK CONTROLS"; }
+
+                FlexboxLayout {
+                    spacing: 10px;
+                    alignment: start;
+                    for tile in UiState.quick-toggles : ToggleTile {
+                        width: 169px;
+                        item: tile;
+                        clicked => { UiState.quick-toggle-clicked(tile.id); }
+                    }
+                }
+
+                // Sound
+                SectionTitle { text: "SOUND"; }
+
+                Rectangle {
+                    height: sound-content.preferred-height + 24px;
+                    border-radius: Tokens.radius-tile;
+                    background: Tokens.surface-card;
+                    border-width: 1px;
+                    border-color: Tokens.border-subtle;
+
+                    sound-content := VerticalLayout {
+                        x: 12px;
+                        y: 12px;
+                        width: parent.width - 24px;
+                        spacing: 8px;
+
+                        HorizontalLayout {
+                            height: 18px;
+                            spacing: 7px;
+                            alignment: start;
+
+                            Icon {
+                                width: 15px;
+                                height: 15px;
+                                y: (parent.height - self.height) / 2;
+                                glyph: UiState.muted ? Icons.volume-muted : Icons.volume;
+                                tint: UiState.audio-available ? Tokens.text-secondary : Tokens.text-tertiary;
+                            }
+                            Text {
+                                text: "Output";
+                                color: Tokens.text-secondary;
+                                font-size: Tokens.type-small;
+                                font-weight: Tokens.weight-medium;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: UiState.audio-available ? round(UiState.volume) + "%" : "Unavailable";
+                                color: Tokens.text-tertiary;
+                                font-size: Tokens.type-caption;
+                                horizontal-alignment: right;
+                                vertical-alignment: center;
+                                width: parent.width - 110px;
+                            }
+                        }
+
+                        if UiState.audio-available : PrismSlider {
+                            height: 24px;
+                            value <=> UiState.volume;
+                            label: "Volume";
+                            changed(value) => { UiState.volume-changed(value); }
+                        }
+
+                        if UiState.audio-available : Rectangle {
+                            height: 32px;
+                            border-radius: 9px;
+                            background: device-touch.has-hover || UiState.audio-picker-open ? Tokens.surface-card-hover : rgba(255, 255, 255, 0.028);
+                            accessible-role: button;
+                            accessible-label: "Audio output: " + UiState.audio-device;
+
+                            Icon {
+                                x: 8px;
+                                y: (parent.height - self.height) / 2;
+                                width: 14px;
+                                height: 14px;
+                                glyph: Icons.headphones;
+                                tint: Tokens.text-secondary;
+                            }
+                            Text {
+                                x: 28px;
+                                y: 0px;
+                                width: parent.width - 54px;
+                                height: parent.height;
+                                text: UiState.audio-device;
+                                color: Tokens.text-secondary;
+                                font-size: Tokens.type-caption;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            Icon {
+                                x: parent.width - 22px;
+                                y: (parent.height - self.height) / 2;
+                                width: 11px;
+                                height: 11px;
+                                glyph: Icons.chevron-down;
+                                tint: Tokens.text-tertiary;
+                            }
+
+                            device-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { UiState.toggle-audio-picker(); }
+                            }
+                        }
+
+                        if UiState.audio-picker-open : VerticalLayout {
+                            spacing: 2px;
+                            for output in UiState.audio-outputs : Rectangle {
+                                height: 30px;
+                                border-radius: 8px;
+                                background: output-touch.has-hover ? Tokens.surface-card-hover : #00000000;
+                                accessible-role: button;
+                                accessible-label: output.name + (output.is-default ? ", selected" : "");
+
+                                Icon {
+                                    x: 8px;
+                                    y: (parent.height - self.height) / 2;
+                                    width: 13px;
+                                    height: 13px;
+                                    glyph: output.is-default ? Icons.check : Icons.headphones;
+                                    tint: output.is-default ? Tokens.accent : Tokens.text-tertiary;
+                                }
+                                Text {
+                                    x: 28px;
+                                    y: 0px;
+                                    width: parent.width - 36px;
+                                    height: parent.height;
+                                    text: output.name;
+                                    color: output.is-default ? Tokens.text-primary : Tokens.text-secondary;
+                                    font-size: Tokens.type-caption;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                output-touch := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { UiState.audio-output-selected(output.id); }
+                                }
+                            }
+                        }
+
+                        if !UiState.audio-available : HorizontalLayout {
+                            height: 30px;
+                            spacing: 8px;
+                            alignment: start;
+
+                            Icon {
+                                width: 14px;
+                                height: 14px;
+                                y: (parent.height - self.height) / 2;
+                                glyph: Icons.warning;
+                                tint: Tokens.critical;
+                            }
+                            Text {
+                                text: UiState.audio-state-detail == "" ? "No audio output is available." : UiState.audio-state-detail;
+                                color: Tokens.text-tertiary;
+                                font-size: Tokens.type-caption;
+                                vertical-alignment: center;
+                                width: parent.width - 160px;
+                                overflow: elide;
+                            }
+                            SettingsLink {
+                                label: "Sound settings";
+                                clicked => { UiState.open-settings("sound"); }
+                            }
+                        }
+                    }
+                }
+
+                // Brightness
+                SectionTitle { text: "DISPLAY"; }
+
+                Rectangle {
+                    height: brightness-content.preferred-height + 24px;
+                    border-radius: Tokens.radius-tile;
+                    background: Tokens.surface-card;
+                    border-width: 1px;
+                    border-color: Tokens.border-subtle;
+
+                    brightness-content := VerticalLayout {
+                        x: 12px;
+                        y: 12px;
+                        width: parent.width - 24px;
+                        spacing: 8px;
+
+                        HorizontalLayout {
+                            height: 18px;
+                            spacing: 7px;
+                            alignment: start;
+                            Icon {
+                                width: 15px;
+                                height: 15px;
+                                y: (parent.height - self.height) / 2;
+                                glyph: Icons.sun;
+                                tint: UiState.brightness-available ? Tokens.text-secondary : Tokens.text-tertiary;
+                            }
+                            Text {
+                                text: "Brightness";
+                                color: Tokens.text-secondary;
+                                font-size: Tokens.type-small;
+                                font-weight: Tokens.weight-medium;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: UiState.brightness-available ? round(UiState.brightness) + "%" : "Unsupported";
+                                color: Tokens.text-tertiary;
+                                font-size: Tokens.type-caption;
+                                horizontal-alignment: right;
+                                vertical-alignment: center;
+                                width: parent.width - 110px;
+                            }
+                        }
+
+                        if UiState.brightness-available : PrismSlider {
+                            height: 24px;
+                            value <=> UiState.brightness;
+                            label: "Brightness";
+                            changed(value) => { UiState.brightness-changed(value); }
+                        }
+
+                        if !UiState.brightness-available : HorizontalLayout {
+                            height: 28px;
+                            spacing: 8px;
+                            alignment: start;
+
+                            Icon {
+                                width: 13px;
+                                height: 13px;
+                                y: (parent.height - self.height) / 2;
+                                glyph: Icons.info;
+                                tint: Tokens.text-tertiary;
+                            }
+                            Text {
+                                text: UiState.brightness-note == "" ? "This display does not expose brightness control." : UiState.brightness-note;
+                                color: Tokens.text-tertiary;
+                                font-size: Tokens.type-caption;
+                                vertical-alignment: center;
+                                width: parent.width - 190px;
+                                overflow: elide;
+                            }
+                            SettingsLink {
+                                label: "Display settings";
+                                clicked => { UiState.open-settings("display"); }
+                            }
+                        }
+                    }
+                }
+
+                // Connectivity
+                SectionTitle { text: "CONNECTIVITY"; }
+
+                Rectangle {
+                    height: connectivity-content.preferred-height + 12px;
+                    border-radius: Tokens.radius-tile;
+                    background: Tokens.surface-card;
+                    border-width: 1px;
+                    border-color: Tokens.border-subtle;
+
+                    connectivity-content := VerticalLayout {
+                        x: 5px;
+                        y: 6px;
+                        width: parent.width - 10px;
+                        spacing: 1px;
+
+                        ConnectionRow {
+                            glyph: UiState.wifi-on ? Icons.wifi : Icons.wifi-off;
+                            title: "Wi-Fi";
+                            detail: UiState.wifi-on ? UiState.wifi-name + " · " + UiState.wifi-detail
+                                : UiState.wifi-capability == "unavailable" ? "No wireless adapter"
+                                : "Off · use the quick control to connect";
+                            tint: UiState.wifi-on ? Tokens.accent : Tokens.text-tertiary;
+                            clicked => { UiState.open-settings("network"); }
+                        }
+
+                        if UiState.wired : ConnectionRow {
+                            glyph: Icons.globe;
+                            title: "Ethernet";
+                            detail: "Connected · 1 Gbps";
+                            tint: Tokens.success;
+                            clicked => { UiState.open-settings("network"); }
+                        }
+
+                        ConnectionRow {
+                            glyph: UiState.bluetooth-on ? Icons.bluetooth : Icons.bluetooth-off;
+                            title: "Bluetooth";
+                            detail: UiState.bluetooth-on ? UiState.bluetooth-name + " · " + UiState.bluetooth-detail
+                                : UiState.bluetooth-capability == "permission" ? "Permission required"
+                                : UiState.bluetooth-capability == "unavailable" ? "No Bluetooth radio"
+                                : "Off";
+                            tint: UiState.bluetooth-on ? Tokens.accent : Tokens.text-tertiary;
+                            clicked => { UiState.open-settings("bluetooth"); }
+                        }
+                    }
+                }
+
+                // Battery (never shown on systems without a battery)
+                if UiState.battery-present : VerticalLayout {
+                    Rectangle {
+                        height: 58px;
+                        border-radius: Tokens.radius-tile;
+                        background: Tokens.surface-card;
+                        border-width: 1px;
+                        border-color: Tokens.border-subtle;
+
+                        Icon {
+                            x: 12px;
+                            y: 12px;
+                            width: 18px;
+                            height: 18px;
+                            glyph: UiState.battery-charging ? Icons.battery-charging
+                                : UiState.battery-percent > 80 ? Icons.battery-full : Icons.battery;
+                            tint: UiState.battery-charging ? Tokens.success
+                                : UiState.battery-percent < 20 ? Tokens.critical : Tokens.text-secondary;
+                        }
+                        Text {
+                            x: 38px;
+                            y: 11px;
+                            text: UiState.battery-percent + "%";
+                            color: Tokens.text-primary;
+                            font-size: Tokens.type-body-large;
+                            font-weight: Tokens.weight-semibold;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            x: 38px;
+                            y: 31px;
+                            width: parent.width - 52px;
+                            text: UiState.battery-detail;
+                            color: Tokens.text-tertiary;
+                            font-size: Tokens.type-caption;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Rectangle {
+                            x: 12px;
+                            y: parent.height - 10px;
+                            width: parent.width - 24px;
+                            height: 3px;
+                            border-radius: 2px;
+                            background: rgba(255, 255, 255, 0.09);
+                            Rectangle {
+                                width: parent.width * (UiState.battery-percent / 100);
+                                height: parent.height;
+                                border-radius: 2px;
+                                background: UiState.battery-charging ? Tokens.success : Tokens.accent;
+                            }
+                        }
+                    }
+                }
+
+                // Media
+                if UiState.media-state != "unsupported" : VerticalLayout {
+                    SectionTitle { text: "NOW PLAYING"; }
+                    MediaCard {}
+                }
+
+            }
+        }
+
+        // A quiet scroll indicator makes constrained-height scrolling evident
+        // without introducing a second visual language.
+        Rectangle {
+            visible: content.preferred-height + 32px > flick.height;
+            x: parent.width - 7px;
+            y: 0px;
+            width: 4px;
+            height: flick.height;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.055);
+        }
+        Rectangle {
+            visible: content.preferred-height + 32px > flick.height;
+            x: parent.width - 7px;
+            y: (flick.height - self.height) * (-flick.content-y / Math.max(1px, (content.preferred-height + 32px) - flick.height));
+            width: 4px;
+            height: Math.max(28px, flick.height * flick.height / (content.preferred-height + 32px));
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.34);
+        }
+
+        // Utilities are pinned; the scrollable status area can never hide the
+        // power/settings escape hatches.
+        Rectangle {
+            x: 0px;
+            y: parent.height - 92px;
+            width: parent.width;
+            height: 92px;
+            background: @linear-gradient(180deg, rgba(15, 20, 30, 0.0) 0%, rgba(15, 20, 30, 0.94) 14%, rgba(15, 20, 30, 0.995) 32%, rgba(15, 20, 30, 0.995) 100%);
+
+            Rectangle {
+                x: 16px;
+                y: 0px;
+                width: parent.width - 32px;
+                height: 1px;
+                background: Tokens.border-subtle;
+            }
+
+            HorizontalLayout {
+                x: 16px;
+                y: 12px;
+                width: parent.width - 32px;
+                height: 52px;
+                spacing: 8px;
+
+                UtilityButton {
+                    width: (parent.width - 24px) / 4;
+                    glyph: Icons.settings;
+                    label: "Settings";
+                    clicked => { UiState.open-settings("home"); }
+                }
+                UtilityButton {
+                    width: (parent.width - 24px) / 4;
+                    glyph: Icons.lock;
+                    label: "Lock";
+                    clicked => { UiState.power-requested("lock"); }
+                }
+                UtilityButton {
+                    width: (parent.width - 24px) / 4;
+                    glyph: Icons.night-light;
+                    label: "Sleep";
+                    clicked => { UiState.power-requested("sleep"); }
+                }
+                UtilityButton {
+                    width: (parent.width - 24px) / 4;
+                    glyph: Icons.power;
+                    label: "Power";
+                    critical: true;
+                    clicked => { UiState.power-requested("power"); }
+                }
+            }
+
+            Rectangle {
+                x: 16px;
+                y: 74px;
+                width: parent.width - 32px;
+                height: 1px;
+                background: Tokens.border-subtle;
+            }
+
+            HorizontalLayout {
+                x: 16px;
+                y: 78px;
+                width: parent.width - 32px;
+                height: 12px;
+                spacing: 6px;
+                alignment: start;
+
+                Rectangle {
+                    width: 5px;
+                    height: 5px;
+                    border-radius: 3px;
+                    y: (parent.height - self.height) / 2;
+                    background: Tokens.warning;
+                }
+                Text {
+                    text: "Preview backend · no system changes";
+                    color: Tokens.text-tertiary;
+                    font-size: 9px;
+                    vertical-alignment: center;
+                }
+                Text {
+                    width: parent.width - 190px;
+                    text: UiState.version-label;
+                    color: Tokens.text-tertiary;
+                    font-size: 9px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

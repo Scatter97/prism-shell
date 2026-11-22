@@ -1,0 +1,106 @@
+import { Icons } from "../icons.slint";
+import { Tokens } from "../tokens.slint";
+import { UiState } from "../state.slint";
+import { Icon } from "icon.slint";
+
+export component Toast inherits Rectangle {
+    in property <bool> open: UiState.toast-visible;
+    in-out property <bool> present: false;
+
+    width: 390px;
+    height: 48px;
+    visible: root.present;
+    border-radius: 14px;
+    background: @linear-gradient(180deg, rgba(38, 45, 61, 0.985), rgba(22, 27, 39, 0.985));
+    border-width: 1px;
+    border-color: UiState.toast-kind == "error" ? rgba(241, 124, 130, 0.42) : Tokens.border-strong;
+    drop-shadow-blur: 26px;
+    drop-shadow-color: rgba(0, 0, 0, 0.45);
+    drop-shadow-offset-y: 9px;
+    opacity: root.open ? 1.0 : 0.0;
+    y: root.open ? 0px : 8px;
+    animate opacity { duration: UiState.reduced-motion ? 0ms : 150ms; }
+    animate y { duration: UiState.reduced-motion ? 0ms : 180ms; }
+    accessible-role: content-info;
+    accessible-label: UiState.toast-message;
+
+    changed open => {
+        if (root.open) {
+            root.present = true;
+        } else {
+            close-delay.running = true;
+        }
+    }
+
+    close-delay := Timer {
+        interval: 220ms;
+        running: false;
+        triggered => {
+            if (!root.open) {
+                root.present = false;
+            }
+            close-delay.running = false;
+        }
+    }
+
+    Rectangle {
+        x: 12px;
+        y: (parent.height - self.height) / 2;
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        background: UiState.toast-kind == "error" ? Tokens.critical-soft
+            : UiState.toast-kind == "success" ? rgba(110, 231, 176, 0.12)
+            : Tokens.accent-soft;
+
+        Icon {
+            width: 14px;
+            height: 14px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            glyph: UiState.toast-kind == "error" ? Icons.warning
+                : UiState.toast-kind == "success" ? Icons.check
+                : Icons.info;
+            tint: UiState.toast-kind == "error" ? Tokens.critical
+                : UiState.toast-kind == "success" ? Tokens.success
+                : Tokens.accent;
+        }
+    }
+
+    Text {
+        x: 48px;
+        y: 0px;
+        width: parent.width - 86px;
+        height: parent.height;
+        text: UiState.toast-message;
+        color: Tokens.text-primary;
+        font-size: Tokens.type-small;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    Rectangle {
+        x: parent.width - 32px;
+        y: 13px;
+        width: 22px;
+        height: 22px;
+        border-radius: 7px;
+        background: dismiss-touch.has-hover ? Tokens.surface-card-hover : #00000000;
+        accessible-role: button;
+        accessible-label: "Dismiss message";
+
+        Icon {
+            width: 10px;
+            height: 10px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            glyph: Icons.close;
+            tint: Tokens.text-tertiary;
+        }
+
+        dismiss-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { UiState.dismiss-toast(); }
+        }
+    }
+}

@@ -1,0 +1,296 @@
+import { Icons } from "../icons.slint";
+import { Tokens } from "../tokens.slint";
+import { UiState } from "../state.slint";
+import { Icon } from "icon.slint";
+
+component CoverArt inherits Rectangle {
+    width: 64px;
+    height: 64px;
+    border-radius: 10px;
+    clip: true;
+    background: @linear-gradient(145deg, #232b5d 0%, #5b4b95 48%, #b66d8f 100%);
+
+    Rectangle {
+        width: 52px;
+        height: 52px;
+        x: 18px;
+        y: -14px;
+        border-radius: 26px;
+        background: rgba(255, 255, 255, 0.13);
+        drop-shadow-blur: 14px;
+        drop-shadow-color: rgba(255, 255, 255, 0.1);
+    }
+    Rectangle {
+        width: 34px;
+        height: 34px;
+        x: -8px;
+        y: 40px;
+        border-radius: 17px;
+        background: rgba(122, 198, 255, 0.22);
+    }
+    Path {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        commands: "M 8 48 C 22 32, 42 56, 60 34";
+        stroke: rgba(255, 255, 255, 0.42);
+        stroke-width: 1.2px;
+        fill: transparent;
+    }
+}
+
+export component MediaCard inherits Rectangle {
+    height: 118px;
+    border-radius: Tokens.radius-tile;
+    background: Tokens.surface-card;
+    border-width: 1px;
+    border-color: Tokens.border-subtle;
+
+    if UiState.media-state == "ready" : Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: #00000000;
+
+        CoverArt {
+            x: 12px;
+            y: 12px;
+        }
+
+        Text {
+            x: 90px;
+            y: 13px;
+            width: parent.width - 102px;
+            height: 18px;
+            text: UiState.media-title;
+            color: Tokens.text-primary;
+            font-size: Tokens.type-body-large;
+            font-weight: Tokens.weight-semibold;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        Text {
+            x: 90px;
+            y: 32px;
+            width: parent.width - 102px;
+            height: 15px;
+            text: UiState.media-artist;
+            color: Tokens.text-secondary;
+            font-size: Tokens.type-small;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        Text {
+            x: 90px;
+            y: 49px;
+            width: parent.width - 102px;
+            height: 13px;
+            text: UiState.media-album;
+            color: Tokens.text-tertiary;
+            font-size: Tokens.type-caption;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        Rectangle {
+            x: 90px;
+            y: 62px;
+            width: parent.width - 102px;
+            height: 3px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.11);
+
+            Rectangle {
+                width: parent.width * UiState.media-progress;
+                height: parent.height;
+                border-radius: 2px;
+                background: Tokens.accent;
+            }
+        }
+
+        Text {
+            x: 90px;
+            y: 69px;
+            text: UiState.media-position;
+            color: Tokens.text-tertiary;
+            font-size: 9px;
+        }
+
+        Text {
+            x: parent.width - 44px;
+            y: 69px;
+            width: 30px;
+            text: UiState.media-duration;
+            color: Tokens.text-tertiary;
+            font-size: 9px;
+            horizontal-alignment: right;
+        }
+
+        // Transport controls sit on the right edge, vertically centred.
+        HorizontalLayout {
+            x: parent.width - 112px;
+            y: 72px;
+            width: 100px;
+            height: 28px;
+            spacing: 4px;
+            alignment: center;
+
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: 9px;
+                background: prev-touch.has-hover ? Tokens.surface-card-hover : #00000000;
+                accessible-role: button;
+                accessible-label: "Previous track";
+                Icon {
+                    width: 13px;
+                    height: 13px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    glyph: Icons.previous;
+                    tint: Tokens.text-secondary;
+                }
+                prev-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { UiState.media-previous(); }
+                }
+            }
+
+            Rectangle {
+                width: 32px;
+                height: 32px;
+                border-radius: 16px;
+                background: play-touch.has-hover ? #ffffff : Tokens.accent;
+                drop-shadow-blur: 10px;
+                drop-shadow-color: rgba(137, 168, 255, 0.28);
+                accessible-role: button;
+                accessible-label: UiState.media-playing ? "Pause" : "Play";
+                Icon {
+                    width: 13px;
+                    height: 13px;
+                    x: (parent.width - self.width) / 2 + (UiState.media-playing ? 0px : 1px);
+                    y: (parent.height - self.height) / 2;
+                    glyph: UiState.media-playing ? Icons.pause : Icons.play;
+                    tint: Tokens.text-on-accent;
+                }
+                play-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { UiState.media-play-pause(); }
+                }
+            }
+
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: 9px;
+                background: next-touch.has-hover ? Tokens.surface-card-hover : #00000000;
+                accessible-role: button;
+                accessible-label: "Next track";
+                Icon {
+                    width: 13px;
+                    height: 13px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    glyph: Icons.next;
+                    tint: Tokens.text-secondary;
+                }
+                next-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { UiState.media-next(); }
+                }
+            }
+        }
+    }
+
+    if UiState.media-state == "empty" : Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: #00000000;
+
+        Rectangle {
+            x: 12px;
+            y: 24px;
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.045);
+            Icon {
+                width: 20px;
+                height: 20px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                glyph: Icons.command;
+                tint: Tokens.text-tertiary;
+            }
+        }
+        Text {
+            x: 72px;
+            y: 28px;
+            width: parent.width - 86px;
+            height: 18px;
+            text: "Nothing playing";
+            color: Tokens.text-secondary;
+            font-size: Tokens.type-body;
+            font-weight: Tokens.weight-medium;
+            vertical-alignment: center;
+        }
+        Text {
+            x: 72px;
+            y: 47px;
+            width: parent.width - 86px;
+            height: 28px;
+            text: "A compatible media session will appear here.";
+            color: Tokens.text-tertiary;
+            font-size: Tokens.type-caption;
+            wrap: word-wrap;
+            vertical-alignment: center;
+        }
+    }
+
+    if UiState.media-state == "error" : Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: #00000000;
+
+        Rectangle {
+            x: 12px;
+            y: 24px;
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            background: Tokens.critical-soft;
+            Icon {
+                width: 19px;
+                height: 19px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                glyph: Icons.warning;
+                tint: Tokens.critical;
+            }
+        }
+        Text {
+            x: 72px;
+            y: 27px;
+            width: parent.width - 86px;
+            height: 18px;
+            text: "Media session unavailable";
+            color: Tokens.text-primary;
+            font-size: Tokens.type-body;
+            font-weight: Tokens.weight-medium;
+            vertical-alignment: center;
+        }
+        Text {
+            x: 72px;
+            y: 46px;
+            width: parent.width - 86px;
+            height: 30px;
+            text: UiState.media-detail;
+            color: Tokens.text-tertiary;
+            font-size: Tokens.type-caption;
+            wrap: word-wrap;
+            vertical-alignment: center;
+        }
+    }
+}

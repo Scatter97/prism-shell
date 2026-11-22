@@ -1,0 +1,221 @@
+import { Icons } from "../icons.slint";
+import { Tokens } from "../tokens.slint";
+import { UiState } from "../state.slint";
+import { AppButton } from "app-button.slint";
+import { Icon } from "icon.slint";
+import { IconButton } from "icon-button.slint";
+
+export component Taskbar inherits Rectangle {
+    in property <length> available-width: 1200px;
+
+    width: Math.min(root.available-width - 48px,
+        314px + UiState.apps.length * 50px + (UiState.hidden-app-count > 0 ? 50px : 0px));
+    height: Tokens.dock-height;
+    border-radius: Tokens.radius-dock;
+    background: @linear-gradient(180deg, Tokens.surface-dock-top 0%, Tokens.surface-dock 100%);
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.115);
+    drop-shadow-blur: 34px;
+    drop-shadow-color: rgba(0, 0, 0, 0.48);
+    drop-shadow-offset-y: 12px;
+    accessible-role: navigation;
+    accessible-label: "Prism taskbar";
+
+    // A fine top highlight gives the surface a glass edge without a heavy border.
+    Rectangle {
+        x: 18px;
+        y: 1px;
+        width: parent.width - 36px;
+        height: 1px;
+        background: @linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.18) 22%, rgba(255, 255, 255, 0.18) 78%, transparent 100%);
+    }
+
+    HorizontalLayout {
+        x: 12px;
+        y: 8px;
+        width: parent.width - 24px;
+        height: 46px;
+        spacing: 6px;
+        alignment: start;
+
+        // Launcher is visually distinct: brand mark, no label.
+        Rectangle {
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            background: launcher-touch.has-hover || UiState.launcher-open ? Tokens.surface-card-hover : #00000000;
+            border-width: UiState.launcher-open ? 1px : 0px;
+            border-color: Tokens.border-accent;
+            accessible-role: button;
+            accessible-label: "Application launcher";
+
+            Image {
+                width: 28px;
+                height: 28px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                source: Icons.prism;
+                image-fit: contain;
+            }
+
+            launcher-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { UiState.toggle-launcher(); }
+            }
+        }
+
+        Rectangle {
+            width: 1px;
+            height: 26px;
+            y: (parent.height - self.height) / 2;
+            background: rgba(255, 255, 255, 0.10);
+        }
+
+        HorizontalLayout {
+            spacing: 4px;
+            alignment: center;
+
+            for app in UiState.apps : AppButton {
+                item: app;
+                slot: app.slot;
+            }
+
+            if UiState.hidden-app-count > 0 : Rectangle {
+                width: 44px;
+                height: 44px;
+                border-radius: 12px;
+                background: overflow-touch.has-hover ? Tokens.surface-card-hover : Tokens.surface-card;
+                border-width: 1px;
+                border-color: Tokens.border-subtle;
+                accessible-role: button;
+                accessible-label: "Show " + UiState.hidden-app-count + " more applications";
+
+                Text {
+                    width: parent.width;
+                    height: parent.height;
+                    text: "+" + UiState.hidden-app-count;
+                    color: Tokens.text-secondary;
+                    font-size: Tokens.type-small;
+                    font-weight: Tokens.weight-medium;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                overflow-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { UiState.toggle-launcher(); }
+                }
+            }
+        }
+
+        Rectangle {
+            width: 1px;
+            height: 26px;
+            y: (parent.height - self.height) / 2;
+            background: rgba(255, 255, 255, 0.10);
+        }
+
+        HorizontalLayout {
+            spacing: 2px;
+            alignment: center;
+
+            IconButton {
+                glyph: UiState.muted || UiState.volume <= 0 ? Icons.volume-muted : Icons.volume;
+                button-size: 30px;
+                glyph-size: 16px;
+                label: UiState.muted ? "Volume muted" : "Volume " + round(UiState.volume) + " percent";
+                tint: UiState.audio-available ? Tokens.text-secondary : Tokens.text-tertiary;
+                interactive: UiState.audio-available;
+                clicked => { UiState.toggle-control-center(); }
+            }
+
+            IconButton {
+                glyph: UiState.wifi-on ? Icons.wifi : Icons.wifi-off;
+                button-size: 30px;
+                glyph-size: 16px;
+                label: UiState.wifi-on ? "Wi-Fi connected" : "Wi-Fi off";
+                tint: UiState.wifi-on ? Tokens.text-secondary : Tokens.text-tertiary;
+                clicked => { UiState.toggle-control-center(); }
+            }
+
+            if UiState.battery-present : Rectangle {
+                width: 56px;
+                height: 30px;
+                border-radius: 9px;
+                background: battery-touch.has-hover ? Tokens.surface-card-hover : #00000000;
+                accessible-role: button;
+                accessible-label: "Battery " + UiState.battery-percent + " percent" + (UiState.battery-charging ? ", charging" : "");
+
+                HorizontalLayout {
+                    x: 6px;
+                    width: parent.width - 12px;
+                    height: parent.height;
+                    spacing: 4px;
+                    alignment: center;
+                    Icon {
+                        width: 15px;
+                        height: 15px;
+                        glyph: UiState.battery-charging ? Icons.battery-charging
+                            : UiState.battery-percent > 80 ? Icons.battery-full
+                            : Icons.battery;
+                        tint: UiState.battery-charging ? Tokens.success
+                            : UiState.battery-percent < 20 ? Tokens.critical
+                            : Tokens.text-secondary;
+                    }
+                    Text {
+                        text: UiState.battery-percent + "%";
+                        color: Tokens.text-secondary;
+                        font-size: Tokens.type-caption;
+                        font-weight: Tokens.weight-medium;
+                        vertical-alignment: center;
+                    }
+                }
+
+                battery-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { UiState.toggle-control-center(); }
+                }
+            }
+
+            Rectangle {
+                width: 66px;
+                height: 40px;
+                background: #00000000;
+                accessible-role: text;
+                accessible-label: "Time " + UiState.clock-time + ", " + UiState.clock-date;
+
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 0px;
+                    Text {
+                        text: UiState.clock-time;
+                        color: Tokens.text-primary;
+                        font-size: Tokens.type-body-large;
+                        font-weight: Tokens.weight-semibold;
+                        horizontal-alignment: center;
+                        height: 17px;
+                    }
+                    if UiState.clock-show-date : Text {
+                        text: UiState.clock-date;
+                        color: Tokens.text-tertiary;
+                        font-size: 9.5px;
+                        font-weight: Tokens.weight-regular;
+                        horizontal-alignment: center;
+                        height: 11px;
+                    }
+                }
+            }
+
+            IconButton {
+                glyph: Icons.control-center;
+                button-size: 38px;
+                glyph-size: 19px;
+                label: UiState.cc-open ? "Close Control Center" : "Open Control Center";
+                active: UiState.cc-open;
+                tint: Tokens.text-secondary;
+                active-tint: Tokens.accent;
+                clicked => { UiState.toggle-control-center(); }
+            }
+        }
+    }
+}

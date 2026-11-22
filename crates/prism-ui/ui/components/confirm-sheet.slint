@@ -1,0 +1,173 @@
+import { Tokens } from "../tokens.slint";
+import { UiState } from "../state.slint";
+
+component SheetButton inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> primary: false;
+    in property <bool> critical: false;
+    callback clicked();
+
+    height: 34px;
+    border-radius: 10px;
+    background: root.critical
+        ? (button-touch.has-hover ? #ff8d93 : Tokens.critical)
+        : root.primary
+        ? (button-touch.has-hover ? Tokens.accent : Tokens.accent-strong)
+        : (button-touch.has-hover ? Tokens.surface-card-hover : Tokens.surface-card);
+    border-width: root.critical || root.primary ? 0px : 1px;
+    border-color: Tokens.border-subtle;
+    accessible-role: button;
+    accessible-label: root.label;
+
+    Text {
+        width: parent.width;
+        height: parent.height;
+        text: root.label;
+        color: root.critical || root.primary ? #0d1526 : Tokens.text-primary;
+        font-size: Tokens.type-small;
+        font-weight: Tokens.weight-semibold;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    button-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component ConfirmSheet inherits Rectangle {
+    in property <bool> open: UiState.confirm-open;
+    in-out property <bool> present: false;
+
+    background: #00000000;
+    visible: root.present;
+
+    changed open => {
+        if (root.open) {
+            root.present = true;
+        } else {
+            close-delay.running = true;
+        }
+    }
+
+    close-delay := Timer {
+        interval: 240ms;
+        running: false;
+        triggered => {
+            if (!root.open) {
+                root.present = false;
+            }
+            close-delay.running = false;
+        }
+    }
+
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: Tokens.surface-scrim;
+        opacity: root.open ? 1.0 : 0.0;
+        animate opacity { duration: UiState.reduced-motion ? 0ms : 150ms; }
+    }
+
+    scrim-touch := TouchArea {
+        enabled: root.open;
+        clicked => { UiState.confirm-cancelled(); }
+    }
+
+    Rectangle {
+        width: 400px;
+        height: 218px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2 - 18px + (root.open ? 0px : 10px);
+        border-radius: Tokens.radius-panel;
+        background: @linear-gradient(180deg, rgba(31, 38, 53, 0.995), rgba(17, 22, 33, 0.995));
+        border-width: 1px;
+        border-color: Tokens.border-strong;
+        drop-shadow-blur: 40px;
+        drop-shadow-color: rgba(0, 0, 0, 0.6);
+        drop-shadow-offset-y: 18px;
+        opacity: root.open ? 1.0 : 0.0;
+        animate opacity { duration: UiState.reduced-motion ? 0ms : 160ms; }
+        accessible-role: groupbox;
+        accessible-label: UiState.confirm-title;
+
+        Text {
+            x: 22px;
+            y: 20px;
+            width: parent.width - 44px;
+            height: 24px;
+            text: UiState.confirm-title;
+            color: Tokens.text-primary;
+            font-size: Tokens.type-title;
+            font-weight: Tokens.weight-semibold;
+            vertical-alignment: center;
+        }
+
+        Text {
+            x: 22px;
+            y: 50px;
+            width: parent.width - 44px;
+            height: 48px;
+            text: UiState.confirm-detail;
+            color: Tokens.text-secondary;
+            font-size: Tokens.type-small;
+            wrap: word-wrap;
+            vertical-alignment: top;
+        }
+
+        Rectangle {
+            x: 22px;
+            y: 108px;
+            width: parent.width - 44px;
+            height: 1px;
+            background: Tokens.border-subtle;
+        }
+
+        HorizontalLayout {
+            x: 22px;
+            y: 128px;
+            width: parent.width - 44px;
+            height: 34px;
+            spacing: 8px;
+            alignment: end;
+
+            Rectangle {
+                width: 126px;
+                SheetButton {
+                    width: parent.width;
+                    label: "Cancel";
+                    clicked => { UiState.confirm-cancelled(); }
+                }
+            }
+            Rectangle {
+                width: 96px;
+                SheetButton {
+                    width: parent.width;
+                    label: "Restart";
+                    clicked => { UiState.power-confirmed("restart"); }
+                }
+            }
+            Rectangle {
+                width: 108px;
+                SheetButton {
+                    width: parent.width;
+                    label: "Shut down";
+                    critical: true;
+                    clicked => { UiState.power-confirmed("shutdown"); }
+                }
+            }
+        }
+
+        Text {
+            x: 22px;
+            y: 178px;
+            width: parent.width - 44px;
+            height: 18px;
+            text: "Destructive actions require a second, explicit click.";
+            color: Tokens.text-tertiary;
+            font-size: 9.5px;
+            vertical-alignment: center;
+        }
+    }
+}

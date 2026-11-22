@@ -1,0 +1,5 @@
+/target
+/artifacts
+/.xwin-cache
+*.log
+.DS_Store

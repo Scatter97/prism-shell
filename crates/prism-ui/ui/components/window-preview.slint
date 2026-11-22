@@ -1,0 +1,323 @@
+import { Icons } from "../icons.slint";
+import { Tokens } from "../tokens.slint";
+import { UiState } from "../state.slint";
+import { WindowItem } from "../types.slint";
+import { AppGlyph, Icon } from "icon.slint";
+import { IconButton } from "icon-button.slint";
+
+component PreviewThumbnail inherits Rectangle {
+    in property <string> kind: "browser";
+    in property <string> title: "";
+
+    width: 204px;
+    height: 92px;
+    border-radius: 9px;
+    background: #111827;
+    clip: true;
+
+    // A miniature window, not a fake screenshot. It communicates the shape of
+    // the real target window until DWM/WGC thumbnails are integrated.
+    Rectangle {
+        width: parent.width;
+        height: 18px;
+        background: rgba(255, 255, 255, 0.085);
+        Rectangle {
+            x: 8px;
+            y: 7px;
+            width: 4px;
+            height: 4px;
+            border-radius: 2px;
+            background: #ff7a86;
+        }
+        Rectangle {
+            x: 15px;
+            y: 7px;
+            width: 4px;
+            height: 4px;
+            border-radius: 2px;
+            background: #f5c26b;
+        }
+        Rectangle {
+            x: 22px;
+            y: 7px;
+            width: 4px;
+            height: 4px;
+            border-radius: 2px;
+            background: #6ee7b0;
+        }
+    }
+
+    Rectangle {
+        x: 10px;
+        y: 28px;
+        width: 40px;
+        height: parent.height - 36px;
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.065);
+    }
+
+    Rectangle {
+        x: 58px;
+        y: 28px;
+        width: parent.width - 68px;
+        height: 8px;
+        border-radius: 3px;
+        background: root.kind == "browser" ? rgba(94, 160, 255, 0.72)
+            : root.kind == "terminal" ? rgba(110, 231, 176, 0.58)
+            : root.kind == "mail" ? rgba(180, 139, 255, 0.64)
+            : root.kind == "music" ? rgba(255, 144, 180, 0.64)
+            : rgba(137, 168, 255, 0.62);
+    }
+
+    Rectangle {
+        x: 58px;
+        y: 42px;
+        width: parent.width - 86px;
+        height: 5px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.18);
+    }
+
+    Rectangle {
+        x: 58px;
+        y: 52px;
+        width: parent.width - 108px;
+        height: 5px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.13);
+    }
+
+    Rectangle {
+        x: 58px;
+        y: 66px;
+        width: 54px;
+        height: 16px;
+        border-radius: 5px;
+        background: root.kind == "browser" ? rgba(94, 160, 255, 0.20)
+            : root.kind == "terminal" ? rgba(110, 231, 176, 0.16)
+            : rgba(255, 255, 255, 0.08);
+    }
+
+    AppGlyph {
+        width: 26px;
+        height: 26px;
+        x: parent.width - 38px;
+        y: parent.height - 36px;
+        kind: root.kind;
+        opacity: 0.9;
+    }
+}
+
+component WindowCard inherits Rectangle {
+    in property <WindowItem> item;
+
+    width: 224px;
+    height: 168px;
+    border-radius: 12px;
+    background: card-touch.has-hover ? rgba(255, 255, 255, 0.09) : rgba(255, 255, 255, 0.048);
+    border-width: 1px;
+    border-color: card-touch.has-hover ? Tokens.border-accent : Tokens.border-subtle;
+    accessible-role: button;
+    accessible-label: root.item.title + ", " + root.item.app-name + (root.item.minimized ? ", minimized" : "");
+
+    PreviewThumbnail {
+        x: 10px;
+        y: 10px;
+        kind: root.item.icon-kind;
+        title: root.item.title;
+    }
+
+    if root.item.minimized : Rectangle {
+        x: 10px;
+        y: 10px;
+        width: 204px;
+        height: 92px;
+        border-radius: 9px;
+        background: rgba(5, 8, 15, 0.58);
+        Text {
+            width: parent.width;
+            height: parent.height;
+            text: "Minimized";
+            color: rgba(245, 247, 250, 0.8);
+            font-size: Tokens.type-caption;
+            font-weight: Tokens.weight-medium;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    AppGlyph {
+        x: 10px;
+        y: 112px;
+        width: 18px;
+        height: 18px;
+        kind: root.item.icon-kind;
+    }
+
+    Text {
+        x: 34px;
+        y: 111px;
+        width: parent.width - 66px;
+        height: 18px;
+        text: root.item.title;
+        color: Tokens.text-primary;
+        font-size: Tokens.type-small;
+        font-weight: Tokens.weight-medium;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    Text {
+        x: 10px;
+        y: 136px;
+        width: parent.width - 46px;
+        height: 14px;
+        text: root.item.app-name;
+        color: Tokens.text-tertiary;
+        font-size: Tokens.type-caption;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    card-touch := TouchArea {
+        enabled: UiState.preview-open;
+        mouse-cursor: pointer;
+        clicked => { UiState.window-activated(root.item.id); }
+    }
+
+    Rectangle {
+        x: parent.width - 30px;
+        y: 8px;
+        width: 22px;
+        height: 22px;
+        border-radius: 7px;
+        background: close-touch.has-hover ? rgba(241, 124, 130, 0.25) : rgba(0, 0, 0, 0.24);
+        accessible-role: button;
+        accessible-label: "Close " + root.item.title;
+
+        Icon {
+            width: 11px;
+            height: 11px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            glyph: Icons.close;
+            tint: close-touch.has-hover ? Tokens.critical : Tokens.text-secondary;
+        }
+
+        close-touch := TouchArea {
+            enabled: UiState.preview-open;
+            mouse-cursor: pointer;
+            clicked => { UiState.window-closed(root.item.id); }
+        }
+    }
+}
+
+export component WindowPreview inherits Rectangle {
+    in-out property <bool> hovered: preview-touch.has-hover;
+    in property <bool> open: UiState.preview-open;
+    in-out property <bool> present: false;
+
+    width: Math.min(724px, 24px + UiState.preview-windows.length * 232px);
+    height: 214px;
+    visible: root.present;
+    border-radius: 16px;
+    background: @linear-gradient(180deg, rgba(28, 34, 49, 0.985), rgba(17, 22, 33, 0.985));
+    border-width: 1px;
+    border-color: Tokens.border-strong;
+    drop-shadow-blur: 34px;
+    drop-shadow-color: rgba(0, 0, 0, 0.52);
+    drop-shadow-offset-y: 14px;
+    opacity: root.open ? 1.0 : 0.0;
+    y: root.open ? 0px : 10px;
+    animate opacity { duration: UiState.reduced-motion ? 0ms : 165ms; }
+    animate y { duration: UiState.reduced-motion ? 0ms : 190ms; }
+    accessible-role: groupbox;
+    accessible-label: "Window previews for " + UiState.preview-app-name;
+
+    changed open => {
+        if (root.open) {
+            root.present = true;
+        } else {
+            close-delay.running = true;
+        }
+    }
+
+    close-delay := Timer {
+        interval: 230ms;
+        running: false;
+        triggered => {
+            if (!root.open) {
+                root.present = false;
+            }
+            close-delay.running = false;
+        }
+    }
+
+    // Sits below the cards so it only observes pointer travel and never
+    // steals a card click. Keeping it first in the child order is deliberate.
+    preview-touch := TouchArea {
+        enabled: root.open;
+    }
+
+    changed hovered => {
+        UiState.keep-preview-open(root.hovered);
+    }
+
+    HorizontalLayout {
+        x: 14px;
+        y: 12px;
+        width: parent.width - 28px;
+        height: 24px;
+        spacing: 8px;
+        alignment: start;
+
+        AppGlyph {
+            width: 18px;
+            height: 18px;
+            kind: UiState.preview-windows.length > 0 ? UiState.preview-windows[0].icon-kind : "generic";
+        }
+        Text {
+            text: UiState.preview-app-name;
+            color: Tokens.text-primary;
+            font-size: Tokens.type-body;
+            font-weight: Tokens.weight-semibold;
+            vertical-alignment: center;
+        }
+        Text {
+            text: UiState.preview-windows.length + (UiState.preview-windows.length == 1 ? " window" : " windows");
+            color: Tokens.text-tertiary;
+            font-size: Tokens.type-caption;
+            vertical-alignment: center;
+        }
+    }
+
+    IconButton {
+        x: parent.width - 36px;
+        y: 10px;
+        glyph: Icons.close;
+        button-size: 24px;
+        glyph-size: 12px;
+        label: "Close window previews";
+        tint: Tokens.text-tertiary;
+        interactive: root.open;
+        clicked => { UiState.close-preview(); }
+    }
+
+    Flickable {
+        x: 12px;
+        y: 36px;
+        width: parent.width - 24px;
+        height: 154px;
+        content-width: Math.max(self.width, UiState.preview-windows.length * 232px);
+        content-height: self.height;
+        interactive: UiState.preview-windows.length > 3;
+
+        HorizontalLayout {
+            spacing: 8px;
+            for window in UiState.preview-windows : WindowCard {
+                item: window;
+            }
+        }
+    }
+
+}

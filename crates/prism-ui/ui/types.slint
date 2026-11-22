@@ -1,0 +1,42 @@
+export struct AppItem {
+    id: string,
+    name: string,
+    icon-kind: string,
+    running: bool,
+    active: bool,
+    window-count: int,
+    pinned: bool,
+    slot: int,
+}
+
+export struct WindowItem {
+    id: int,
+    title: string,
+    app-name: string,
+    icon-kind: string,
+    minimized: bool,
+}
+
+export struct ToggleItem {
+    id: string,
+    label: string,
+    detail: string,
+    icon-kind: string,
+    active: bool,
+    // "available" | "unsupported" | "permission" | "unavailable"
+    capability: string,
+    // "idle" | "pending" | "failed"
+    phase: string,
+    error: string,
+}
+
+export struct AudioOutputItem {
+    id: string,
+    name: string,
+    is-default: bool,
+}
+
+export struct ScenarioItem {
+    id: string,
+    label: string,
+}

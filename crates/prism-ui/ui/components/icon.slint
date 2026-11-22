@@ -1,0 +1,25 @@
+import { Icons } from "../icons.slint";
+
+export component Icon inherits Image {
+    in property <image> glyph: Icons.info;
+    in property <color> tint: #ffffff;
+    width: 18px;
+    height: 18px;
+    source: root.glyph;
+    colorize: root.tint;
+    image-fit: contain;
+}
+
+export component AppGlyph inherits Image {
+    in property <string> kind: "generic";
+    width: 30px;
+    height: 30px;
+    source: root.kind == "files" ? Icons.app-files
+        : root.kind == "browser" ? Icons.app-browser
+        : root.kind == "terminal" ? Icons.app-terminal
+        : root.kind == "mail" ? Icons.app-mail
+        : root.kind == "music" ? Icons.app-music
+        : root.kind == "notes" ? Icons.app-notes
+        : Icons.app-generic;
+    image-fit: contain;
+}

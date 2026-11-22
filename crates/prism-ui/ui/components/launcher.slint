@@ -1,0 +1,267 @@
+import { Icons } from "../icons.slint";
+import { Tokens } from "../tokens.slint";
+import { UiState } from "../state.slint";
+import { AppItem } from "../types.slint";
+import { AppGlyph, Icon } from "icon.slint";
+import { IconButton } from "icon-button.slint";
+
+component LauncherTile inherits Rectangle {
+    in property <AppItem> item;
+
+    width: 76px;
+    height: 88px;
+    border-radius: 12px;
+    background: tile-touch.has-hover ? Tokens.surface-card-hover : #00000000;
+    border-width: root.item.running ? 1px : 0px;
+    border-color: rgba(255, 255, 255, 0.05);
+    accessible-role: button;
+    accessible-label: "Open " + root.item.name;
+
+    AppGlyph {
+        width: 34px;
+        height: 34px;
+        x: (parent.width - self.width) / 2;
+        y: 12px;
+        kind: root.item.icon-kind;
+        transform-scale-x: tile-touch.has-hover ? 106% : 100%;
+        transform-scale-y: tile-touch.has-hover ? 106% : 100%;
+        animate transform-scale-x { duration: 120ms; }
+        animate transform-scale-y { duration: 120ms; }
+    }
+
+    Text {
+        x: 4px;
+        y: 54px;
+        width: parent.width - 8px;
+        height: 26px;
+        text: root.item.name;
+        color: Tokens.text-secondary;
+        font-size: Tokens.type-caption;
+        font-weight: Tokens.weight-medium;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        wrap: word-wrap;
+        overflow: elide;
+    }
+
+    Rectangle {
+        width: root.item.running ? (root.item.active ? 12px : 5px) : 0px;
+        height: 3px;
+        border-radius: 2px;
+        x: (parent.width - self.width) / 2;
+        y: parent.height - 8px;
+        background: root.item.active ? Tokens.accent : rgba(220, 227, 242, 0.6);
+    }
+
+    tile-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { UiState.launcher-app-clicked(root.item.id); }
+    }
+}
+
+export component Launcher inherits Rectangle {
+    in property <bool> open: UiState.launcher-open;
+    in-out property <bool> present: false;
+
+    width: 360px;
+    height: 452px;
+    visible: root.present;
+    border-radius: Tokens.radius-panel;
+    background: @linear-gradient(180deg, rgba(29, 35, 50, 0.985), rgba(16, 21, 32, 0.985));
+    border-width: 1px;
+    border-color: Tokens.border-strong;
+    drop-shadow-blur: 36px;
+    drop-shadow-color: rgba(0, 0, 0, 0.5);
+    drop-shadow-offset-y: 14px;
+    opacity: root.open ? 1.0 : 0.0;
+    y: root.open ? 0px : 10px;
+    animate opacity { duration: UiState.reduced-motion ? 0ms : 170ms; }
+    animate y { duration: UiState.reduced-motion ? 0ms : 200ms; }
+    accessible-role: groupbox;
+    accessible-label: "Application launcher";
+
+    changed open => {
+        if (root.open) {
+            root.present = true;
+            search.focus();
+        } else {
+            close-delay.running = true;
+        }
+    }
+
+    close-delay := Timer {
+        interval: 230ms;
+        running: false;
+        triggered => {
+            if (!root.open) {
+                root.present = false;
+            }
+            close-delay.running = false;
+        }
+    }
+
+    Text {
+        x: 18px;
+        y: 18px;
+        text: "Applications";
+        color: Tokens.text-primary;
+        font-size: Tokens.type-title;
+        font-weight: Tokens.weight-semibold;
+        vertical-alignment: center;
+    }
+
+    Text {
+        x: 18px;
+        y: 38px;
+        text: "Pinned and running";
+        color: Tokens.text-tertiary;
+        font-size: Tokens.type-caption;
+        vertical-alignment: center;
+    }
+
+    IconButton {
+        x: parent.width - 42px;
+        y: 14px;
+        glyph: Icons.close;
+        button-size: 28px;
+        glyph-size: 13px;
+        tint: Tokens.text-tertiary;
+        label: "Close launcher";
+        clicked => { UiState.close-launcher(); }
+    }
+
+    Rectangle {
+        x: 14px;
+        y: 62px;
+        width: parent.width - 28px;
+        height: 38px;
+        border-radius: 11px;
+        background: Tokens.surface-inset;
+        border-width: 1px;
+        border-color: Tokens.border-subtle;
+
+        Icon {
+            x: 12px;
+            y: (parent.height - self.height) / 2;
+            width: 15px;
+            height: 15px;
+            glyph: Icons.search;
+            tint: Tokens.text-tertiary;
+        }
+
+        Text {
+            x: 35px;
+            y: 0px;
+            width: parent.width - 45px;
+            height: parent.height;
+            text: "Search applications";
+            color: Tokens.text-tertiary;
+            font-size: Tokens.type-body;
+            vertical-alignment: center;
+            visible: UiState.launcher-query == "";
+        }
+
+        search := TextInput {
+            x: 35px;
+            y: 0px;
+            width: parent.width - 45px;
+            height: parent.height;
+            text: UiState.launcher-query;
+            single-line: true;
+            color: Tokens.text-primary;
+            font-size: Tokens.type-body;
+            edited => { UiState.launcher-search(search.text); }
+        }
+    }
+
+    Flickable {
+        x: 14px;
+        y: 112px;
+        width: parent.width - 28px;
+        height: 282px;
+        content-width: self.width;
+        content-height: Math.max(self.height, launcher-grid.preferred-height);
+        interactive: launcher-grid.preferred-height > self.height;
+
+        launcher-grid := FlexboxLayout {
+            width: parent.content-width;
+            spacing: 8px;
+            flex-wrap: wrap;
+            alignment: start;
+            cross-axis-line-alignment: start;
+
+            for app in UiState.launcher-apps : LauncherTile {
+                item: app;
+            }
+        }
+    }
+
+    if UiState.launcher-apps.length == 0 : Rectangle {
+        x: 14px;
+        y: 140px;
+        width: parent.width - 28px;
+        height: 180px;
+        background: #00000000;
+
+        Icon {
+            width: 28px;
+            height: 28px;
+            x: (parent.width - self.width) / 2;
+            y: 34px;
+            glyph: Icons.search;
+            tint: Tokens.text-tertiary;
+        }
+        Text {
+            x: 0px;
+            y: 74px;
+            width: parent.width;
+            text: "No applications found";
+            color: Tokens.text-secondary;
+            font-size: Tokens.type-body;
+            horizontal-alignment: center;
+        }
+        Text {
+            x: 0px;
+            y: 94px;
+            width: parent.width;
+            text: "Try a different search.";
+            color: Tokens.text-tertiary;
+            font-size: Tokens.type-caption;
+            horizontal-alignment: center;
+        }
+    }
+
+    Rectangle {
+        x: 14px;
+        y: parent.height - 44px;
+        width: parent.width - 28px;
+        height: 1px;
+        background: Tokens.border-subtle;
+    }
+
+    Rectangle {
+        x: 14px;
+        y: parent.height - 36px;
+        width: parent.width - 28px;
+        height: 26px;
+        background: #00000000;
+
+        Icon {
+            width: 12px;
+            height: 12px;
+            y: (parent.height - self.height) / 2;
+            glyph: Icons.info;
+            tint: Tokens.text-tertiary;
+        }
+        Text {
+            x: 18px;
+            width: parent.width - 18px;
+            height: parent.height;
+            text: "Preview launcher · the Windows Start menu is untouched";
+            color: Tokens.text-tertiary;
+            font-size: 9.5px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}

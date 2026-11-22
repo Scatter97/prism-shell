@@ -1,0 +1,59 @@
+import { Tokens } from "../tokens.slint";
+
+export component PrismSlider inherits Rectangle {
+    in-out property <float> value: 50;
+    in property <bool> enabled: true;
+    in property <string> label: "Slider";
+    callback changed(float);
+
+    height: 26px;
+    background: #00000000;
+    accessible-role: slider;
+    accessible-label: root.label;
+
+    track := Rectangle {
+        x: 1px;
+        width: parent.width - 2px;
+        height: 4px;
+        y: (parent.height - self.height) / 2;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.10);
+    }
+
+    Rectangle {
+        x: 1px;
+        width: Math.max(0px, (parent.width - 2px) * (root.value / 100));
+        height: 4px;
+        y: (parent.height - self.height) / 2;
+        border-radius: 2px;
+        background: root.enabled ? @linear-gradient(90deg, Tokens.accent-strong, Tokens.accent) : rgba(255, 255, 255, 0.16);
+    }
+
+    Rectangle {
+        width: touch.has-hover && root.enabled ? 16px : 13px;
+        height: self.width;
+        border-radius: self.width / 2;
+        x: clamp((parent.width - self.width) * (root.value / 100), 0px, parent.width - self.width);
+        y: (parent.height - self.height) / 2;
+        background: root.enabled ? #ffffff : rgba(255, 255, 255, 0.45);
+        border-width: 3px;
+        border-color: rgba(8, 12, 22, 0.16);
+        drop-shadow-blur: 6px;
+        drop-shadow-color: rgba(0, 0, 0, 0.35);
+        drop-shadow-offset-y: 2px;
+        animate width { duration: Tokens.motion-fast; }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        moved => {
+            root.value = clamp((self.mouse-x / self.width) * 100, 0, 100);
+            root.changed(root.value);
+        }
+        clicked => {
+            root.value = clamp((self.mouse-x / self.width) * 100, 0, 100);
+            root.changed(root.value);
+        }
+    }
+}

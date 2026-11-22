@@ -1,0 +1,75 @@
+import { Tokens } from "../tokens.slint";
+import { AppItem } from "../types.slint";
+import { UiState } from "../state.slint";
+import { AppGlyph } from "icon.slint";
+
+export component AppButton inherits Rectangle {
+    in property <AppItem> item;
+    in property <int> slot: 0;
+    in property <bool> hovered: touch.has-hover;
+
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    background: root.item.active ? Tokens.surface-card-active
+        : root.hovered ? Tokens.surface-card-hover
+        : #00000000;
+    border-width: root.item.active ? 1px : 0px;
+    border-color: Tokens.border-accent;
+    accessible-role: button;
+    accessible-label: root.item.name + (root.item.running ? ", running" : ", not running");
+
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        border-radius: parent.border-radius;
+        background: Tokens.surface-card-hover;
+        opacity: root.hovered && !root.item.active ? 1.0 : 0.0;
+        animate opacity { duration: Tokens.motion-fast; }
+    }
+
+    AppGlyph {
+        width: root.hovered ? 31.5px : 30px;
+        height: self.width;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2 - 2px;
+        kind: root.item.icon-kind;
+        animate width { duration: 130ms; }
+    }
+
+    // Running / active indicator. Shape and width carry the state, so the
+    // information is not color-only.
+    Rectangle {
+        width: root.item.active ? 18px
+            : root.item.window-count > 1 ? 12px
+            : root.item.running ? 6px
+            : 0px;
+        height: root.item.active ? 3.5px : 3px;
+        border-radius: 2px;
+        x: (parent.width - self.width) / 2;
+        y: parent.height - 4px;
+        background: root.item.active ? Tokens.accent : rgba(220, 227, 242, 0.72);
+        opacity: root.item.running ? 1.0 : 0.0;
+        animate width { duration: Tokens.motion-normal; }
+        animate opacity { duration: Tokens.motion-fast; }
+    }
+
+    changed hovered => {
+        if (root.hovered) {
+            UiState.hovered-app-id = root.item.id;
+            UiState.hovered-app-slot = root.slot;
+            UiState.app-hovered(root.item.id);
+        } else {
+            if (UiState.hovered-app-id == root.item.id) {
+                UiState.hovered-app-id = "";
+                UiState.hovered-app-slot = -1;
+            }
+            UiState.app-unhovered(root.item.id);
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { UiState.app-clicked(root.item.id); }
+    }
+}

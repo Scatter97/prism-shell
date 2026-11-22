@@ -1,0 +1,157 @@
+import { Icons } from "../icons.slint";
+import { Tokens } from "../tokens.slint";
+import { UiState } from "../state.slint";
+import { Icon } from "icon.slint";
+import { IconButton } from "icon-button.slint";
+
+export component DevBar inherits Rectangle {
+
+    height: 32px;
+    background: #00000000;
+
+    // Left: unmistakable development-only identity.
+    Rectangle {
+        x: 20px;
+        y: 0px;
+        height: 30px;
+        width: 356px;
+        border-radius: 9px;
+        background: rgba(8, 12, 20, 0.58);
+        border-width: 1px;
+        border-color: rgba(255, 255, 255, 0.09);
+        accessible-role: banner;
+        accessible-label: "Prism Shell development preview, mock data";
+
+        brand-content := HorizontalLayout {
+            x: 12px;
+            y: 0px;
+            width: parent.width - 24px;
+            height: parent.height;
+            spacing: 7px;
+            alignment: start;
+
+            Image {
+                width: 17px;
+                height: 17px;
+                y: (parent.height - self.height) / 2;
+                source: Icons.prism;
+                image-fit: contain;
+            }
+            Text {
+                text: "PRISM SHELL";
+                color: Tokens.text-primary;
+                font-size: 10px;
+                font-weight: Tokens.weight-semibold;
+                letter-spacing: 1.1px;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                width: 1px;
+                height: 11px;
+                y: (parent.height - self.height) / 2;
+                background: rgba(255, 255, 255, 0.16);
+            }
+            Rectangle {
+                width: dev-label.preferred-width + 14px;
+                height: 18px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 6px;
+                background: rgba(245, 194, 107, 0.13);
+                border-width: 1px;
+                border-color: rgba(245, 194, 107, 0.24);
+
+                dev-label := Text {
+                    x: 7px;
+                    y: 0px;
+                    height: parent.height;
+                    text: "DEVELOPMENT PREVIEW";
+                    color: Tokens.warning;
+                    font-size: 8px;
+                    font-weight: Tokens.weight-semibold;
+                    letter-spacing: 0.55px;
+                    vertical-alignment: center;
+                }
+            }
+            Text {
+                text: "MOCK DATA";
+                color: Tokens.text-tertiary;
+                font-size: 8px;
+                font-weight: Tokens.weight-semibold;
+                letter-spacing: 0.55px;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    // Right: fixtures and preview-only simulations.
+    HorizontalLayout {
+        x: parent.width - 452px;
+        y: 1px;
+        width: 432px;
+        height: 28px;
+        spacing: 4px;
+        alignment: end;
+
+        for scenario in UiState.scenarios : Rectangle {
+            width: 64px;
+            height: 26px;
+            border-radius: 7px;
+            background: UiState.scenario == scenario.id ? rgba(137, 168, 255, 0.16)
+                : scenario-touch.has-hover ? rgba(255, 255, 255, 0.08)
+                : rgba(8, 12, 20, 0.44);
+            border-width: 1px;
+            border-color: UiState.scenario == scenario.id ? rgba(137, 168, 255, 0.34) : rgba(255, 255, 255, 0.07);
+            accessible-role: button;
+            accessible-label: "Load " + scenario.label + " fixture";
+
+            Text {
+                width: parent.width;
+                height: parent.height;
+                text: scenario.label;
+                color: UiState.scenario == scenario.id ? Tokens.accent : Tokens.text-secondary;
+                font-size: 9px;
+                font-weight: UiState.scenario == scenario.id ? Tokens.weight-semibold : Tokens.weight-medium;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            scenario-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { UiState.scenario-selected(scenario.id); }
+            }
+        }
+
+        Rectangle {
+            width: 1px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        IconButton {
+            glyph: Icons.display;
+            button-size: 26px;
+            glyph-size: 13px;
+            tint: Tokens.text-tertiary;
+            label: "Simulate a monitor change";
+            clicked => { UiState.simulate-display-change(); }
+        }
+        IconButton {
+            glyph: Icons.volume-muted;
+            button-size: 26px;
+            glyph-size: 13px;
+            tint: Tokens.text-tertiary;
+            label: "Simulate loss of the audio endpoint";
+            clicked => { UiState.simulate-audio-loss(); }
+        }
+        IconButton {
+            glyph: Icons.close;
+            button-size: 26px;
+            glyph-size: 12px;
+            tint: Tokens.text-tertiary;
+            label: "Quit the development preview";
+            clicked => { UiState.quit-preview(); }
+        }
+    }
+}

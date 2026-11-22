@@ -1,0 +1,15 @@
+[package]
+name = "prism-platform"
+description = "Platform service contracts and deterministic development mocks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+prism-core.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"

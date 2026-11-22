@@ -1,0 +1,17 @@
+[package]
+name = "prism-ui"
+description = "Slint presentation layer for Prism Shell"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+prism-core.workspace = true
+slint.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true
+
+# Slint's generated glue contains `unsafe` blocks. Hand-written code in this
+# crate is kept free of unsafe blocks; platform interop lives in prism-windows.

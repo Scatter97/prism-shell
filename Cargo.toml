@@ -1,0 +1,43 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/prism-core",
+    "crates/prism-platform",
+    "crates/prism-ui",
+    "crates/prism-app",
+]
+default-members = ["crates/prism-app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+
+[workspace.dependencies]
+prism-core = { path = "crates/prism-core" }
+prism-platform = { path = "crates/prism-platform" }
+prism-ui = { path = "crates/prism-ui" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+slint = "1.19.0"
+slint-build = "1.19.0"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2

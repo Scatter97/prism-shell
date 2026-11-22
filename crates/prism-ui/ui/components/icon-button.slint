@@ -1,0 +1,50 @@
+import { Icons } from "../icons.slint";
+import { Tokens } from "../tokens.slint";
+import { Icon } from "icon.slint";
+
+export component IconButton inherits Rectangle {
+    in property <image> glyph: Icons.info;
+    in property <length> button-size: 30px;
+    in property <length> glyph-size: 16px;
+    in property <color> tint: Tokens.text-secondary;
+    in property <color> active-tint: Tokens.accent;
+    in property <string> label: "";
+    in property <bool> active: false;
+    in property <bool> interactive: true;
+    callback clicked();
+
+    width: root.button-size;
+    height: root.button-size;
+    border-radius: Tokens.radius-control;
+    background: root.active ? Tokens.surface-card-active : #00000000;
+    border-width: root.active ? 1px : 0px;
+    border-color: Tokens.border-accent;
+    opacity: root.interactive ? (touch.pressed ? 0.72 : 1.0) : 0.42;
+    accessible-role: button;
+    accessible-label: root.label;
+
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        border-radius: parent.border-radius;
+        background: Tokens.surface-card-hover;
+        opacity: touch.has-hover && root.interactive ? 1.0 : 0.0;
+        animate opacity { duration: Tokens.motion-fast; }
+    }
+
+    Icon {
+        width: root.glyph-size;
+        height: root.glyph-size;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        glyph: root.glyph;
+        tint: root.active ? root.active-tint : root.tint;
+        animate width { duration: Tokens.motion-fast; }
+    }
+
+    touch := TouchArea {
+        enabled: root.interactive;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
