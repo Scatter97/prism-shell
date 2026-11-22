@@ -1,9 +1,9 @@
 # Testing — Prism Shell
 
 Status: portable unit tests, Linux visual tests, virtual-display interaction tests, Windows MSVC
-cross-builds, and a native `windows-latest` compile/test run were executed. Native Windows desktop
-runtime integration was **not** executed and must not be reported as passing. The checklist is in
-`docs/WINDOWS_VALIDATION.md`.
+cross-builds, and a native `windows-latest` compile/test run were executed. One Windows 11 startup
+attempt failed before any Prism surface appeared; commit `3936efd` fixes the HWND timing but has
+not been re-tested. No Windows desktop runtime behavior is validated.
 
 Last update: 2026-11-21.
 
@@ -19,7 +19,7 @@ Last update: 2026-11-21.
 | Visual | Layout, typography, spacing, overflow, DPI behavior, state presentation | Xvfb screenshots + manual review |
 | Interaction | Real pointer/keyboard state transitions | `xdotool` against Xvfb |
 | Windows compile | MSVC target, link, PE output, static CRT | `cargo xwin` + `windows-latest` CI |
-| Windows runtime | HWND styles, DWM alpha, focus/z-order, Explorer coexistence, activation, recovery | **Not run** |
+| Windows runtime | HWND styles, DWM alpha, focus/z-order, Explorer coexistence, activation, recovery | **Attempted once; startup failed; fix pending re-test** |
 
 ## 2. Commands and results
 
@@ -50,8 +50,12 @@ Executed results:
 - **Windows release cross-build:** `cargo xwin build --release --target
   x86_64-pc-windows-msvc -p prism-app --bins` produced a 14 MB GUI-subsystem `prism-shell.exe` and
   a 15 MB `prism-preview.exe`, with no VC runtime import. This proves the toolchain/link path only.
-- **Windows runtime:** not executed. No `Tested on Windows` runtime label applies to any feature.
-  The runtime checklist and smoke script exist but have not run.
+- **Windows runtime:** one startup attempt on Windows 11 failed before any surface appeared with
+  `window handle unavailable: the underlying handle cannot be represented using the types in this
+  crate`. Slint/winit creates the HWND asynchronously; the old code requested it immediately after
+  `show()`. Commit `3936efd` resolves the HWND on the first event-loop tick with a 5-second timeout.
+  The fix is cross-compiled and portable-tested on Linux, but has **not** been re-run on Windows.
+  No `Tested on Windows` runtime label applies to any feature yet.
 - **Native Windows CI:** GitHub Actions run
   [44983452807](https://github.com/Scatter97/prism-shell/actions/runs/44983452807) passed both
   jobs for commit `25668a9`:
@@ -195,6 +199,7 @@ Do not claim these as complete:
 
 - Windows 11 desktop runtime for anything in `prism-shell.exe`: window creation, HWND styles, DWM
   alpha, frameless/transparent appearance, focus/z-order, non-activating taskbar, click-through.
+  One startup attempt reached this path and failed before the UI; the fix is pending re-test.
 - Interactive execution on a Windows 11 desktop; the `windows-latest` run only compiles/links and
   runs portable unit tests on a server image.
 - Win32 `EnumWindows`/`SetWinEventHook` behavior, AUMID/UWP identity, icon extraction,

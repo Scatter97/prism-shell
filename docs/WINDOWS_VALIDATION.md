@@ -1,8 +1,16 @@
 # Windows 11 Validation Checklist
 
-Status: **Not executed.** The native shell has been cross-compiled for
-`x86_64-pc-windows-msvc`, but it has not run on Windows. Do not mark any item
-below as passed until it is executed on a real Windows 11 x64 machine or VM.
+Status: **Attempted once; not passed.** The native shell was launched on Windows 11 and exited
+before any surface appeared with `window handle unavailable`. Commit `3936efd` defers HWND
+attachment to the first event-loop tick; it has not been re-tested. Do not mark any item below as
+passed until it is executed successfully on a real Windows 11 x64 machine or VM.
+
+## Execution log
+
+| Date | Build | Result |
+|---|---|---|
+| 2026-11-22 | source build before `3936efd` | Failed before UI: `window handle unavailable: the underlying handle cannot be represented using the types in this crate`. HWND requested before winit created it. |
+| pending | `3936efd` or newer | Re-run startup and the checklist below. |
 
 ## Build artifact
 

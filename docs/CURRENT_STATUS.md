@@ -1,6 +1,6 @@
 # Current Status — Prism Shell
 
-Last updated: 2026-11-21. Target: Windows 11 x64. Development host: Linux.
+Last updated: 2026-11-22. Target: Windows 11 x64. Development host: Linux.
 
 ## Status summary
 
@@ -12,11 +12,16 @@ Last updated: 2026-11-21. Target: Windows 11 x64. Development host: Linux.
 | Phase 3A — native Windows shell host | **Implemented; successfully cross-compiled; native CI build/test passed** | `prism-windows` crate, Win32/DWM host, taskbar/CC/launcher surfaces |
 | Phase 3A — real window tracking | **Implemented; successfully cross-compiled; native CI build/test passed** | `EnumWindows`, icon extraction, foreground events, activation |
 | Phase 3A — Windows CI compile/test | **Executed on `windows-latest`** | GitHub Actions run 44983452807: fmt, clippy, 72 tests, debug binaries |
-| Phase 3A — Windows runtime validation | **Not executed** | no Windows 11 desktop host/VM available |
+| Phase 3A — first Windows 11 launch | **Failed at startup; fix pending re-test** | `window handle unavailable` before any surface appeared; fix `3936efd` |
+| Phase 3A — Windows runtime validation | **Attempted once; not passed** | startup only; no window, rendering, focus, or activation test completed |
 | Taskbar hiding / Explorer replacement | **Not implemented; blocked** | deliberate safety boundary |
 | Real system controls (audio/radios/brightness/media) | **Not implemented** | shown as unavailable or native Settings fallbacks |
 
-The Linux preview is functional. The Windows executable is a real native-limited shell, but its runtime behavior is **unverified** until the checklist in `docs/WINDOWS_VALIDATION.md` is executed on Windows 11.
+The Linux preview is functional. The Windows executable is a real native-limited shell. It has
+been launched once on Windows 11, where it failed before any surface appeared because the HWND was
+requested before winit created it. Commit `3936efd` defers HWND attachment to the first event-loop
+tick with a 5-second timeout. That fix is cross-compiled and unit-tested on Linux but has **not**
+been re-tested on Windows; all Windows runtime behavior remains **Unverified**.
 
 ## Implemented and tested on Linux
 
@@ -88,12 +93,23 @@ Both Windows binaries build with `cargo xwin` for `x86_64-pc-windows-msvc`:
 
 ## Actually tested on Windows 11
 
-**No interactive Windows 11 runtime test has been executed.** The binaries have not been run on a
-Windows 11 desktop, not even under Wine.
+**One startup attempt was made on a Windows 11 x64 machine using a source build. It failed before
+any Prism surface appeared.**
 
-The native shell code has been compiled and its portable tests run on a hosted `windows-latest`
-runner (Windows Server). That proves the MSVC build, link, and portable test behavior; it does
-**not** exercise the Slint surfaces, DWM, Explorer, focus rules, or real window tracking.
+- Error: `window handle unavailable: the underlying handle cannot be represented using the types
+  in this crate`.
+- Cause: Slint/winit creates the native Win32 window asynchronously, after the event loop starts.
+  The old startup path called `window_handle()` immediately after `show()`, when no HWND existed.
+- Fix: commit `3936efd` resolves and configures the taskbar HWND on the first event-loop tick,
+  attaches Control Center/launcher HWNDs when each window becomes available, and exits with a
+  visible startup error after a 5-second timeout.
+- Status: the fix is cross-compiled for `x86_64-pc-windows-msvc` and passed portable tests on
+  Linux. It has **not** been re-run on Windows.
+
+No successful interactive Windows 11 runtime test has been executed, and the binaries have not run
+under Wine. The `windows-latest` CI runner (Windows Server) proves the MSVC build, link, and
+portable test behavior; it does **not** exercise the Slint surfaces, DWM, Explorer, focus rules, or
+real window tracking.
 
 Therefore the following remain **Unverified**:
 
@@ -124,7 +140,10 @@ Therefore the following remain **Unverified**:
 
 ## Recommended next step
 
-**Execute `docs/WINDOWS_VALIDATION.md` on a real Windows 11 x64 VM/physical machine, starting at 100% scaling with a single monitor.** Fix the first blocker found, in this order:
+**Rebuild from commit `3936efd` or newer, then execute `docs/WINDOWS_VALIDATION.md` on a real
+Windows 11 x64 machine, starting at 100% scaling with a single monitor.** The first check is
+whether the deferred-HWND startup fix lets the taskbar window appear at all. Then fix the first
+blocker found, in this order:
 
 1. Does the taskbar window appear and render alpha correctly?
 2. Does clicking a dock app activate/minimize the real target?

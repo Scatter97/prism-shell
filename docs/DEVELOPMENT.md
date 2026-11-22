@@ -1,7 +1,8 @@
 # Development Guide — Prism Shell
 
 Status: Linux development workflow and Windows cross-build workflow are implemented. The native
-Windows shell is cross-compiled but has not run on Windows; runtime validation is pending.
+Windows shell has been launched once on Windows 11 but failed at startup because the HWND was not
+available immediately after `show()`. Commit `3936efd` defers attachment; re-test is pending.
 
 ## 1. Toolchain
 

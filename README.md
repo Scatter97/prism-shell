@@ -2,12 +2,13 @@
 
 A native Windows 11 floating taskbar/dock and Control Center, written in Rust.
 
-> **Status: Phase 3A native Windows shell implemented, successfully cross-compiled, not yet run on
-> Windows.** The Linux preview is still the only runtime-tested UI. The Windows executable adds a
-> real overlay taskbar/Control Center/launcher, real window tracking, icons, and activation, but
-> every Windows runtime behavior is **unverified** until the checklist in
-> `docs/WINDOWS_VALIDATION.md` is executed. It does **not** replace Explorer, hide the Windows
-> taskbar, modify the registry, or present mock data as real Windows system state.
+> **Status: Phase 3A native Windows shell implemented, successfully cross-compiled, Windows launch
+> attempted.** The first Windows 11 launch failed before any Prism surface appeared because the
+> HWND was requested before winit created it. Commit `3936efd` defers HWND attachment and has not
+> yet been re-tested. The Linux preview is still the only runtime-tested UI. Every other Windows
+> runtime behavior is **unverified**; see `docs/WINDOWS_VALIDATION.md`. Prism does **not** replace
+> Explorer, hide the Windows taskbar, modify the registry, or present mock data as real Windows
+> system state.
 
 ## What you can run today
 

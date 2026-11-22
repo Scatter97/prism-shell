@@ -1,7 +1,9 @@
 # Installing Prism Shell on Windows 11
 
 Status: **source build only. No signed binary release or installer yet.** The Windows runtime is
-**unverified**; see [`WINDOWS_VALIDATION.md`](WINDOWS_VALIDATION.md) before running it.
+**unverified**. The first Windows 11 launch failed before any surface appeared because the HWND was
+requested before winit created it; commit `3936efd` defers attachment and has not been re-tested.
+See [`WINDOWS_VALIDATION.md`](WINDOWS_VALIDATION.md) before running it.
 
 Prism Shell is a normal desktop application. It runs alongside Explorer, does not replace the
 Windows shell, does not hide the taskbar, and does not add itself to startup. Explorer remains
@@ -117,9 +119,9 @@ Two project decisions block publishing a prebuilt release:
 
 - The Slint license choice (GPLv3 or the royalty-free option with attribution) is unresolved.
   See `DECISIONS.md` D-019.
-- The native Windows host has been cross-compiled but not executed on Windows 11, so its
-  transparency, focus, activation, and Explorer coexistence are unverified. See
-  `CURRENT_STATUS.md`.
+- The native Windows host has only been exercised by one failed startup attempt on Windows 11; the
+  HWND timing fix is pending re-test. Therefore its transparency, focus, activation, and Explorer
+  coexistence are unverified. See `CURRENT_STATUS.md`.
 
 Once those are resolved, a tagged GitHub Release can provide an unsigned test build. Until then,
 building from source is the supported path.
@@ -131,6 +133,7 @@ building from source is the supported path.
 | `cargo` or `rustup` not found | Reopen PowerShell; rerun the rustup installer if needed. |
 | `link.exe` not found / `msvc` target missing | Add the **Desktop development with C++** workload and the Windows 11 SDK component; update rustup/Rust; reopen PowerShell. |
 | Prism exits immediately | Read `%LOCALAPPDATA%\Prism\logs\prism-shell.log`; run the debug build. |
+| `window handle unavailable: the underlying handle cannot be represented...` | Your build predates `3936efd`. Run `git pull`, rebuild, and retry. |
 | Dock is invisible or has a black box | Record GPU/driver and scale; try `SLINT_BACKEND=software`; report the log. |
 | Clicking apps does not activate them | Record whether the target is elevated; this is a known unverified foreground path. |
 | Dock covers a maximized window | Expected: no AppBar work-area reservation in this build. |

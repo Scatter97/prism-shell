@@ -2,8 +2,10 @@
 
 Status: Phase 1 foundation, Phase 2 visual prototype, and Phase 3A native Windows host are
 **Implemented**. Phase 1/2 are **Tested on Linux**; the Windows host is **successfully
-cross-compiled** for `x86_64-pc-windows-msvc` but has not executed on Windows. All Windows
-runtime behavior remains **Unverified**.
+cross-compiled** and passed native CI compile/tests. One Windows 11 launch was attempted and failed
+before the UI appeared because the HWND was requested before winit created it. Commit `3936efd`
+defers attachment to the first event-loop tick; re-test is pending. All Windows runtime behavior
+remains **Unverified**.
 
 The design goal is a native, low-footprint Windows 11 shell with one coherent visual system. The
 architecture keeps presentation, application state, platform integration, and recovery separate so
@@ -71,7 +73,8 @@ contract for both the preview and the future Windows backend.
 `WindowsPlatform` lives in `prism-windows` (not `prism-platform`) because it needs the Win32 host:
 `ShellExecuteExW` launch, `ShowWindow`/`SetForegroundWindow` activation, `LockWorkStation`, native
 Settings URIs, and `GetSystemPowerStatus`. It reports audio, radios, brightness, and media as
-unavailable rather than simulating them. It has not run on Windows yet.
+unavailable rather than simulating them. It has only run during one failed Windows startup attempt;
+no system-control action has been validated.
 
 ### `prism-ui`
 
