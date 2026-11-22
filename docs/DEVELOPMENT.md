@@ -209,6 +209,8 @@ modify the registry, auto-start, or run mock data as if it were real system stat
 
 A native `windows-latest` CI job may build/test/fmt/clippy, but it cannot validate DWM
 transparency, Explorer, the taskbar, Core Audio endpoints, radios, or notification consent.
+`.github/workflows/ci.yml` contains the proposed job definitions. It has not been executed in this
+environment (no remote/push authorization).
 
 ## 10. Common issues
 

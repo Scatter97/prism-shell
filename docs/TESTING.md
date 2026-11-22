@@ -43,6 +43,8 @@ Executed results:
   produced `prism-shell.exe` and `prism-preview.exe` (PE32+ x86-64). Static CRT link succeeded; the
   import table has no VC runtime DLL. Cross-compilation proves the toolchain/link path only.
 - **Windows runtime:** not executed. No `Tested on Windows` label applies to any feature.
+- **CI:** `.github/workflows/ci.yml` exists as a proposed Linux/Windows build+test workflow, but it
+  has not run (no remote/push authorization). Do not report it as passing.
 - **Automated UI snapshot matrix:** `scripts/test/ui-snapshots.sh` generated 14 UI-only PNGs at
   1920×1080, 1280×800, and 125%/150%/200% scale. All files were non-empty; dimensions were checked
   with `file` (1920×1080 for scale checks, 1280×800 for the small canvas).

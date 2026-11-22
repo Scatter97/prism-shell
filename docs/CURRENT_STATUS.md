@@ -107,6 +107,9 @@ a real, interactive Linux preview of the intended V1 interface.
 - **Not run:** the `.exe` files have not been executed on Windows, not even under Wine. No claim
   about DWM transparency, taskbar behavior, focus, audio, radios, or media is established by the
   cross-build.
+- `.github/workflows/ci.yml` proposes native Linux and Windows build/test jobs. It has **not been
+  executed** because this local repository has no remote/push authorization. Windows runtime tests
+  are deliberately not part of hosted CI.
 
 ## Known limitations
 

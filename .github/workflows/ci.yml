@@ -1,0 +1,56 @@
+name: CI
+
+# Build/test only. Runtime shell behavior must be validated on a real Windows 11
+# VM or physical machine; a hosted runner cannot validate Explorer/DWM/taskbar,
+# Core Audio endpoints, radios, or notification consent.
+#
+# This workflow has not been executed in this environment because the local
+# repository has no remote/push authorization. Treat the YAML as a proposed CI
+# definition until the first run is recorded.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux build and portable tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install UI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig1-dev libfreetype6-dev libx11-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
+      - name: Tests
+        run: cargo test --workspace
+      - name: Preview binary
+        run: cargo build -p prism-app --bin prism-preview
+
+  windows:
+    name: Windows MSVC build and portable tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
+      - name: Tests
+        run: cargo test --workspace
+      - name: Build executables
+        run: cargo build -p prism-app --bins
