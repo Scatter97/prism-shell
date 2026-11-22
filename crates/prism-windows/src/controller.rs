@@ -198,7 +198,8 @@ pub fn run_shell(config: PrismConfig) -> Result<(), Box<dyn Error>> {
         }
     });
 
-    slint::run_event_loop()?;
+    let event_loop_result = slint::run_event_loop();
+    // Always restore native shell state even if the event loop itself failed.
     shell.borrow_mut().shutdown();
     drop(timer);
     drop(shortcut_timer);
@@ -206,6 +207,7 @@ pub fn run_shell(config: PrismConfig) -> Result<(), Box<dyn Error>> {
     if let Some(error) = shell.borrow().fatal_error.clone() {
         return Err(error.into());
     }
+    event_loop_result?;
     Ok(())
 }
 
