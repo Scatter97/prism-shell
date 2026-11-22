@@ -12,8 +12,9 @@ available at all times.
 - Windows 11 x64.
 - [Git for Windows](https://git-scm.com/download/win).
 - Rust stable with the MSVC toolchain.
-- Visual Studio 2022 Build Tools with the **Desktop development with C++** workload and a Windows
-  11 SDK. The MSVC linker is required; a MinGW-only setup is not supported.
+- Visual Studio 2022 or 2026 Build Tools with the **Desktop development with C++** workload and a
+  Windows 11 SDK. Visual Studio 2026 works with current stable Rust; the full IDE is also fine if
+  the C++ workload is installed.
 
 Administrator rights are not needed to run Prism. Installing the build tools may prompt for
 elevation.
@@ -25,11 +26,23 @@ Using `winget` in PowerShell:
 ```powershell
 winget install --id Git.Git -e --source winget
 winget install --id Rustlang.Rustup -e --source winget
-winget install --id Microsoft.VisualStudio.2022.BuildTools -e --source winget
+winget install --id Microsoft.VisualStudio.BuildTools -e --source winget
 ```
 
+The last command installs the current Build Tools (Visual Studio 2026). You can substitute
+`Microsoft.VisualStudio.2022.BuildTools` if you prefer the 2022 toolset.
+
 Then open **Visual Studio Installer**, choose **Modify** for Build Tools, and enable **Desktop
-development with C++** (including the MSVC compiler and Windows 11 SDK).
+development with C++** (including the MSVC compiler and Windows 11 SDK). The Windows SDK component
+is required even if you are not targeting Windows 11-specific APIs; without it, Rust may report
+`link.exe` not found even when the C++ tools are present.
+
+If you use Visual Studio 2026 and hit linker detection problems, update rustup and Rust first:
+
+```powershell
+rustup self update
+rustup update stable
+```
 
 Close and reopen PowerShell so `cargo`, `rustup`, and `git` are on `PATH`.
 
@@ -116,7 +129,7 @@ building from source is the supported path.
 | Symptom | Action |
 |---|---|
 | `cargo` or `rustup` not found | Reopen PowerShell; rerun the rustup installer if needed. |
-| `link.exe` not found / `msvc` target missing | Add the **Desktop development with C++** workload and Windows 11 SDK. |
+| `link.exe` not found / `msvc` target missing | Add the **Desktop development with C++** workload and the Windows 11 SDK component; update rustup/Rust; reopen PowerShell. |
 | Prism exits immediately | Read `%LOCALAPPDATA%\Prism\logs\prism-shell.log`; run the debug build. |
 | Dock is invisible or has a black box | Record GPU/driver and scale; try `SLINT_BACKEND=software`; report the log. |
 | Clicking apps does not activate them | Record whether the target is elevated; this is a known unverified foreground path. |
