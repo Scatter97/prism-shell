@@ -13,6 +13,10 @@ pub struct PrismConfig {
     pub pinned_apps: Vec<String>,
     pub dock: DockConfig,
     pub accessibility: AccessibilityConfig,
+    /// Shell-integration experiments. Every field defaults to `false`; current
+    /// Windows builds must remain safe coexist-with-Explorer overlays unless the
+    /// owner explicitly opts in after real Windows recovery validation.
+    pub experimental: ExperimentalConfig,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -28,6 +32,37 @@ pub struct AccessibilityConfig {
     pub reduced_motion: bool,
 }
 
+/// Opt-in shell integrations. These are disabled by default and are not part
+/// of the validated V1 behavior until tested on a real Windows 11 desktop.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct ExperimentalConfig {
+    /// Hide the native Windows taskbar and use Prism as the visible taskbar.
+    /// Requires the independent `prism-recovery.exe` watchdog next to the shell.
+    pub taskbar_replacement: bool,
+    /// Intercept a standalone left/right Windows key release and toggle the
+    /// Prism launcher. Combinations (Win+E, Win+L, ...) are always passed
+    /// through unchanged.
+    pub windows_key_launcher: bool,
+    /// Also register the fallback launcher shortcut. Registered automatically
+    /// when the low-level Windows-key hook cannot be installed.
+    pub windows_key_fallback_hotkey: bool,
+    /// Fallback launcher hotkey. Supported modifiers are Ctrl, Alt, Shift, and
+    /// Win; supported keys include A-Z, 0-9, Space, Tab, F1-F24, and arrows.
+    pub windows_key_fallback_shortcut: String,
+}
+
+impl Default for ExperimentalConfig {
+    fn default() -> Self {
+        Self {
+            taskbar_replacement: false,
+            windows_key_launcher: false,
+            windows_key_fallback_hotkey: false,
+            windows_key_fallback_shortcut: "Ctrl+Alt+Space".to_owned(),
+        }
+    }
+}
+
 impl Default for PrismConfig {
     fn default() -> Self {
         Self {
@@ -40,6 +75,7 @@ impl Default for PrismConfig {
             ],
             dock: DockConfig::default(),
             accessibility: AccessibilityConfig::default(),
+            experimental: ExperimentalConfig::default(),
         }
     }
 }
@@ -157,5 +193,24 @@ mod tests {
         let config = PrismConfig::from_json(json).unwrap();
         assert!(config.dock.show_date);
         assert!(!config.accessibility.reduced_motion);
+        assert!(!config.experimental.taskbar_replacement);
+        assert!(!config.experimental.windows_key_launcher);
+        assert!(!config.experimental.windows_key_fallback_hotkey);
+        assert_eq!(
+            config.experimental.windows_key_fallback_shortcut,
+            "Ctrl+Alt+Space"
+        );
+    }
+
+    #[test]
+    fn experimental_integrations_are_opt_in_and_round_trip() {
+        let mut config = PrismConfig::default();
+        assert_eq!(config.experimental, ExperimentalConfig::default());
+        config.experimental.taskbar_replacement = true;
+        config.experimental.windows_key_launcher = true;
+        let restored = PrismConfig::from_json(&config.to_json_pretty().unwrap()).unwrap();
+        assert!(restored.experimental.taskbar_replacement);
+        assert!(restored.experimental.windows_key_launcher);
+        assert!(!restored.experimental.windows_key_fallback_hotkey);
     }
 }
