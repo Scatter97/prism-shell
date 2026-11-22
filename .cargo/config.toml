@@ -1,0 +1,4 @@
+# Prism Shell must run without assuming the Visual C++ Redistributable is
+# installed. Static CRT linking keeps the Windows deployment self-contained.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
