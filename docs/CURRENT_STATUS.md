@@ -88,6 +88,10 @@ a real, interactive Linux preview of the intended V1 interface.
   - `prism-preview.exe`: PE32+ x86-64, debug.
   - Static CRT (`+crt-static`); no VCRUNTIME/MSVCP runtime dependency. `prism-shell.exe` imports
     only `kernel32`, `user32`, `ntdll`, and a core sync API set.
+- `cargo xwin build --release --target x86_64-pc-windows-msvc -p prism-app --bins`: **succeeded**.
+  - `prism-shell.exe` (release): 211 KB; `prism-preview.exe` (release): 14 MB.
+  - Static CRT; no VC runtime DLL. The only build noise is benign `LNK4099` warnings from the
+    Microsoft debug CRT PDB references in the xwin SDK. No Windows runtime test was performed.
 - Linux visual captures: 1920×1080, 1280×800, 2560×1440 at 125%/150% scale, 1920×1080 at 200%
   stress scale, and 3840×2160 at 200% logical 1920×1080; screenshots under `artifacts/screenshots/`.
 - `scripts/test/ui-snapshots.sh`: 14 automated UI-only captures at 100%, 125%, 150%, 200% and

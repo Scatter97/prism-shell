@@ -41,7 +41,9 @@ Executed results:
   cleanup.
 - **Windows cross-build:** `cargo xwin build --target x86_64-pc-windows-msvc -p prism-app --bins`
   produced `prism-shell.exe` and `prism-preview.exe` (PE32+ x86-64). Static CRT link succeeded; the
-  import table has no VC runtime DLL. Cross-compilation proves the toolchain/link path only.
+  import table has no VC runtime DLL. The release cross-build also succeeded (`prism-shell.exe`
+  211 KB, `prism-preview.exe` 14 MB). The only build noise is benign `LNK4099` warnings from the
+  debug CRT PDB references in the xwin SDK. Cross-compilation proves the toolchain/link path only.
 - **Windows runtime:** not executed. No `Tested on Windows` label applies to any feature.
 - **CI:** `.github/workflows/ci.yml` exists as a proposed Linux/Windows build+test workflow, but it
   has not run (no remote/push authorization). Do not report it as passing.
